@@ -19,6 +19,9 @@ from views.dialogs.list_creator_dialog import ListCreatorDialog
 from views.dialogs.list_editor_dialog import ListEditorDialog
 from core.search_engine import SearchEngine
 from core.advanced_filter_engine import AdvancedFilterEngine
+from styles.futuristic_theme import get_theme
+from styles.animations import AnimationSystem, AnimationDurations
+from styles.effects import ParticleEffect, ScanLineEffect
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -60,6 +63,11 @@ class FloatingPanel(QWidget):
         self.panel_id = panel_id  # ID del panel en la base de datos (None si no está guardado)
         self.custom_name = custom_name  # Nombre personalizado del panel
         self.custom_color = custom_color  # Color personalizado del header (hex format)
+
+        # Futuristic theme and effects
+        self.theme = get_theme()
+        self.animation_system = AnimationSystem()
+        self._first_show = True  # Flag para animación de entrada
 
         # Get panel width from config
         if config_manager:
@@ -113,14 +121,18 @@ class FloatingPanel(QWidget):
         # Set window opacity
         self.setWindowOpacity(0.95)
 
-        # Set background
-        self.setStyleSheet("""
-            FloatingPanel {
-                background-color: #252525;
-                border: 2px solid #007acc;
-                border-left: 5px solid #007acc;
-                border-radius: 8px;
-            }
+        # Set background with glassmorphism
+        self.setStyleSheet(f"""
+            FloatingPanel {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(26, 31, 58, 0.92),
+                    stop:1 rgba(10, 14, 39, 0.95)
+                );
+                border: 2px solid {self.theme.get_color('primary')};
+                border-left: 5px solid {self.theme.get_color('primary')};
+                border-radius: 12px;
+            }}
         """)
 
         # Main layout
@@ -130,26 +142,14 @@ class FloatingPanel(QWidget):
 
         # Header with category name and close button
         self.header_widget = QWidget()
-        self.header_widget.setStyleSheet("""
-            QWidget {
-                background-color: #007acc;
-                border-radius: 6px 6px 0 0;
-            }
-        """)
+        self.header_widget.setStyleSheet(self.theme.get_header_style())
         self.header_layout = QHBoxLayout(self.header_widget)
         self.header_layout.setContentsMargins(15, 10, 10, 10)
         self.header_layout.setSpacing(5)
 
         # Category title
         self.header_label = QLabel("Select a category")
-        self.header_label.setStyleSheet("""
-            QLabel {
-                background-color: transparent;
-                color: #ffffff;
-                font-size: 12pt;
-                font-weight: bold;
-            }
-        """)
+        self.header_label.setStyleSheet(self.theme.get_label_style('title'))
         self.header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_layout.addWidget(self.header_label)
 
@@ -157,22 +157,22 @@ class FloatingPanel(QWidget):
         self.pin_button = QPushButton("📌")
         self.pin_button.setFixedSize(24, 24)
         self.pin_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.pin_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
-                border: 1px solid rgba(255, 255, 255, 0.2);
+        self.pin_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: rgba(255, 255, 255, 0.15);
+                color: {self.theme.get_color('text_primary')};
+                border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 12px;
                 font-size: 10pt;
                 padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.4);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255, 255, 255, 0.3);
-            }
+            }}
+            QPushButton:hover {{
+                background-color: rgba(255, 255, 255, 0.25);
+                border-color: {self.theme.get_color('accent')};
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(255, 255, 255, 0.35);
+            }}
         """)
         self.pin_button.setToolTip("Anclar panel (permite abrir múltiples paneles)")
         self.pin_button.clicked.connect(self.toggle_pin)
@@ -182,24 +182,24 @@ class FloatingPanel(QWidget):
         self.minimize_button = QPushButton("−")
         self.minimize_button.setFixedSize(24, 24)
         self.minimize_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.minimize_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
-                border: 1px solid rgba(255, 255, 255, 0.2);
+        self.minimize_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: rgba(255, 255, 255, 0.15);
+                color: {self.theme.get_color('text_primary')};
+                border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 12px;
                 font-size: 16pt;
                 font-weight: bold;
                 padding: 0px;
                 padding-bottom: 4px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.4);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255, 255, 255, 0.3);
-            }
+            }}
+            QPushButton:hover {{
+                background-color: rgba(255, 255, 255, 0.25);
+                border-color: {self.theme.get_color('accent')};
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(255, 255, 255, 0.35);
+            }}
         """)
         self.minimize_button.setToolTip("Minimizar panel")
         self.minimize_button.clicked.connect(self.toggle_minimize)
@@ -210,22 +210,22 @@ class FloatingPanel(QWidget):
         self.config_button = QPushButton("⚙")
         self.config_button.setFixedSize(24, 24)
         self.config_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.config_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
-                border: 1px solid rgba(255, 255, 255, 0.2);
+        self.config_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: rgba(255, 255, 255, 0.15);
+                color: {self.theme.get_color('text_primary')};
+                border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 12px;
                 font-size: 10pt;
                 padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.4);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255, 255, 255, 0.3);
-            }
+            }}
+            QPushButton:hover {{
+                background-color: rgba(255, 255, 255, 0.25);
+                border-color: {self.theme.get_color('accent')};
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(255, 255, 255, 0.35);
+            }}
         """)
         self.config_button.setToolTip("Configurar panel (nombre y color)")
         self.config_button.clicked.connect(self.on_config_clicked)
@@ -236,23 +236,23 @@ class FloatingPanel(QWidget):
         close_button = QPushButton("✕")
         close_button.setFixedSize(24, 24)
         close_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
-                border: 1px solid rgba(255, 255, 255, 0.2);
+        close_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: rgba(255, 255, 255, 0.15);
+                color: {self.theme.get_color('text_primary')};
+                border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 12px;
                 font-size: 12pt;
                 font-weight: bold;
                 padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.4);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255, 255, 255, 0.3);
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme.get_color('error')};
+                border-color: {self.theme.get_color('error')};
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(255, 50, 50, 0.7);
+            }}
         """)
         close_button.clicked.connect(self.hide)
         self.header_layout.addWidget(close_button)
@@ -261,11 +261,11 @@ class FloatingPanel(QWidget):
 
         # Botón para abrir ventana de filtros avanzados
         self.filters_button_widget = QWidget()
-        self.filters_button_widget.setStyleSheet("""
-            QWidget {
-                background-color: #2d2d2d;
-                border-bottom: 1px solid #3d3d3d;
-            }
+        self.filters_button_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.theme.get_color('background_mid')};
+                border-bottom: 1px solid {self.theme.get_color('surface')};
+            }}
         """)
         filters_button_layout = QHBoxLayout(self.filters_button_widget)
         filters_button_layout.setContentsMargins(8, 5, 8, 5)
@@ -273,23 +273,23 @@ class FloatingPanel(QWidget):
 
         self.open_filters_button = QPushButton("🔍 Filtros Avanzados")
         self.open_filters_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.open_filters_button.setStyleSheet("""
-            QPushButton {
-                background-color: #007acc;
-                color: #ffffff;
+        self.open_filters_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.get_color('primary')};
+                color: {self.theme.get_color('text_primary')};
                 border: none;
                 border-radius: 4px;
                 padding: 8px 16px;
                 font-size: 10pt;
                 font-weight: bold;
                 text-align: left;
-            }
-            QPushButton:hover {
-                background-color: #005a9e;
-            }
-            QPushButton:pressed {
-                background-color: #004578;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme.get_color('secondary')};
+            }}
+            QPushButton:pressed {{
+                background-color: {self.theme.get_color('accent')};
+            }}
         """)
         self.open_filters_button.clicked.connect(self.toggle_filters_window)
         filters_button_layout.addWidget(self.open_filters_button)
@@ -299,13 +299,7 @@ class FloatingPanel(QWidget):
 
         # Label para el filtro de estado
         state_label = QLabel("Estado:")
-        state_label.setStyleSheet("""
-            QLabel {
-                color: #cccccc;
-                font-size: 10pt;
-                background: transparent;
-            }
-        """)
+        state_label.setStyleSheet(self.theme.get_label_style('normal'))
         filters_button_layout.addWidget(state_label)
 
         # ComboBox para filtrar por estado
@@ -316,37 +310,7 @@ class FloatingPanel(QWidget):
         self.state_filter_combo.addItem("📋 Todos", "all")
         self.state_filter_combo.setCurrentIndex(0)  # Default: Normal
         self.state_filter_combo.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.state_filter_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #2d2d2d;
-                color: #cccccc;
-                border: 1px solid #3d3d3d;
-                border-radius: 4px;
-                padding: 5px 10px;
-                font-size: 10pt;
-                min-width: 140px;
-            }
-            QComboBox:hover {
-                border: 1px solid #007acc;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid #cccccc;
-                margin-right: 5px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2d2d2d;
-                color: #cccccc;
-                selection-background-color: #007acc;
-                selection-color: #ffffff;
-                border: 1px solid #3d3d3d;
-            }
-        """)
+        self.state_filter_combo.setStyleSheet(self.theme.get_combobox_style())
         self.state_filter_combo.currentIndexChanged.connect(self.on_state_filter_changed)
         filters_button_layout.addWidget(self.state_filter_combo)
 
@@ -356,26 +320,27 @@ class FloatingPanel(QWidget):
         # Botón Nueva Lista
         self.new_list_button = QPushButton("📝 Nueva Lista")
         self.new_list_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.new_list_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2a5a2a;
-                color: #ffffff;
+        self.new_list_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.get_color('success')};
+                color: {self.theme.get_color('background_deep')};
                 border: none;
                 border-radius: 4px;
                 padding: 8px 16px;
                 font-size: 10pt;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3a7a3a;
-            }
-            QPushButton:pressed {
-                background-color: #1a4a1a;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                color: #666666;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme.get_color('secondary')};
+                color: {self.theme.get_color('text_primary')};
+            }}
+            QPushButton:pressed {{
+                background-color: {self.theme.get_color('accent')};
+            }}
+            QPushButton:disabled {{
+                background-color: {self.theme.get_color('surface')};
+                color: {self.theme.get_color('text_secondary')};
+            }}
         """)
         self.new_list_button.setToolTip("Crear una nueva lista de pasos secuenciales")
         self.new_list_button.clicked.connect(self.on_new_list_clicked)
@@ -400,25 +365,13 @@ class FloatingPanel(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.scroll_area.setStyleSheet("""
-            QScrollArea {
+        self.scroll_area.setStyleSheet(f"""
+            QScrollArea {{
                 border: none;
-                background-color: #252525;
-                border-radius: 0 0 6px 6px;
-            }
-            QScrollBar:vertical {
-                background-color: #2d2d2d;
-                width: 10px;
-                border: none;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #555555;
-                border-radius: 5px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #666666;
-            }
+                background-color: {self.theme.get_color('background_deep')};
+                border-radius: 0 0 10px 10px;
+            }}
+            {self.theme.get_scrollbar_style()}
         """)
 
         # Container for items
@@ -430,6 +383,32 @@ class FloatingPanel(QWidget):
 
         self.scroll_area.setWidget(self.items_container)
         main_layout.addWidget(self.scroll_area)
+
+        # Aplicar efectos visuales futuristas
+        # Partículas flotantes (muy sutiles)
+        self.particle_effect = ParticleEffect(self, particle_count=20)
+        self.particle_effect.setGeometry(self.rect())
+        self.particle_effect.lower()
+
+        # Líneas de escaneo (muy sutiles)
+        self.scanline_effect = ScanLineEffect(self, line_spacing=6, speed=1.0)
+        self.scanline_effect.setGeometry(self.rect())
+        self.scanline_effect.lower()
+
+    def showEvent(self, event):
+        """Handler al mostrar ventana - aplicar animación de entrada"""
+        super().showEvent(event)
+
+        if self._first_show:
+            self._first_show = False
+            # Aplicar solo fade in (sin slide para no interferir con position_near_sidebar)
+            animation = self.animation_system.fade_in(
+                self,
+                duration=AnimationDurations.FAST
+            )
+            animation.start()
+            # Guardar referencia para que no se destruya
+            self._show_animation = animation
 
     def load_category(self, category: Category):
         """Load and display items and lists from a category"""
