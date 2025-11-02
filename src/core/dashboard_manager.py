@@ -157,6 +157,8 @@ class DashboardManager:
                 'total_items': 0,
                 'total_favorites': 0,
                 'total_sensitive': 0,
+                'total_inactive': 0,  # Contador de desactivados
+                'total_archived': 0,  # Contador de archivados
                 'total_unique_tags': 0,
                 'most_used_tag': '',
                 'avg_items_per_category': 0.0,
@@ -192,6 +194,12 @@ class DashboardManager:
                         stats['total_favorites'] += 1
                     if item['is_sensitive']:
                         stats['total_sensitive'] += 1
+
+                    # Count inactive and archived
+                    if not item.get('is_active', 1):  # Si is_active es 0 o False
+                        stats['total_inactive'] += 1
+                    if item.get('is_archived', False):  # Si is_archived es True
+                        stats['total_archived'] += 1
 
                     # Collect item tags
                     all_tags.extend(item['tags'])

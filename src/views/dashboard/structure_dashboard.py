@@ -380,8 +380,8 @@ class StructureDashboard(QDialog):
         """Create the main tree widget"""
         tree = QTreeWidget()
         tree.setHeaderLabels(["☐", "Nombre", "Tipo", "Info"])
-        tree.setColumnWidth(0, 50)   # Checkbox column (aumentado para mejor visibilidad)
-        tree.setColumnWidth(1, 360)  # Name column
+        tree.setColumnWidth(0, 70)   # Checkbox column (aumentado para que no tape el header)
+        tree.setColumnWidth(1, 340)  # Name column (reducido un poco para compensar)
         tree.setColumnWidth(2, 100)  # Type column
         tree.setColumnWidth(3, 600)  # Info column
 
@@ -680,6 +680,12 @@ class StructureDashboard(QDialog):
             f"🔒 {stats['total_sensitive']} sens.",
             f"🏷️ {stats['total_unique_tags']} tags"
         ]
+
+        # Add inactive and archived counts
+        if stats.get('total_inactive', 0) > 0:
+            stats_parts.append(f"🚫 {stats['total_inactive']} inact.")
+        if stats.get('total_archived', 0) > 0:
+            stats_parts.append(f"📦 {stats['total_archived']} arch.")
 
         # Add most used tag if available
         if stats.get('most_used_tag'):
