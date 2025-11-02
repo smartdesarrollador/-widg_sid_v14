@@ -5,7 +5,7 @@ Main window for visualizing global structure of categories and items
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QWidget, QApplication, QMenu
+    QTreeWidget, QTreeWidgetItem, QWidget, QApplication, QMenu, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QBrush, QColor, QShortcut, QKeySequence
@@ -14,6 +14,8 @@ import logging
 from core.dashboard_manager import DashboardManager
 from views.dashboard.search_bar_widget import SearchBarWidget
 from views.dashboard.highlight_delegate import HighlightDelegate
+from views.dashboard.action_bar_widget import ActionBarWidget
+from views.dashboard.selection_utils_widget import SelectionUtilsWidget
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,12 @@ class StructureDashboard(QDialog):
         self.dragging = False
         self.drag_position = None
         self.normal_geometry = None  # Store normal size for restore
+
+        # Tracking de items seleccionados (para selección múltiple)
+        self.selected_items = {
+            'categories': [],  # Lista de category_ids seleccionadas
+            'items': []        # Lista de (category_id, item_id) tuplas
+        }
 
         self.init_ui()
         self.setup_shortcuts()
@@ -82,9 +90,28 @@ class StructureDashboard(QDialog):
         self.search_bar.navigate_to_result.connect(self.navigate_to_result)
         main_layout.addWidget(self.search_bar)
 
+        # Selection Utilities
+        self.selection_utils = SelectionUtilsWidget()
+        self.selection_utils.select_all_requested.connect(self.select_all)
+        self.selection_utils.select_none_requested.connect(self.clear_selection)
+        self.selection_utils.invert_selection_requested.connect(self.invert_selection)
+        main_layout.addWidget(self.selection_utils)
+
         # TreeView
         self.tree_widget = self.create_tree_widget()
         main_layout.addWidget(self.tree_widget)
+
+        # Action Bar (for bulk operations)
+        self.action_bar = ActionBarWidget()
+        self.action_bar.favorite_requested.connect(self.bulk_set_favorite)
+        self.action_bar.unfavorite_requested.connect(self.bulk_unset_favorite)
+        self.action_bar.activate_requested.connect(self.bulk_activate)
+        self.action_bar.deactivate_requested.connect(self.bulk_deactivate)
+        self.action_bar.archive_requested.connect(self.bulk_archive)
+        self.action_bar.unarchive_requested.connect(self.bulk_unarchive)
+        self.action_bar.delete_requested.connect(self.bulk_delete)
+        self.action_bar.clear_selection_requested.connect(self.clear_selection)
+        main_layout.addWidget(self.action_bar)
 
         # Footer
         footer = self.create_footer()
@@ -110,7 +137,23 @@ class StructureDashboard(QDialog):
         esc_shortcut = QShortcut(QKeySequence("Escape"), self)
         esc_shortcut.activated.connect(self.search_bar.clear_search)
 
-        logger.info("Keyboard shortcuts configured: Ctrl+F, F3, Shift+F3, Esc")
+        # Ctrl+A to select all
+        select_all_shortcut = QShortcut(QKeySequence("Ctrl+A"), self)
+        select_all_shortcut.activated.connect(self.select_all)
+
+        # Ctrl+Shift+A to deselect all
+        deselect_all_shortcut = QShortcut(QKeySequence("Ctrl+Shift+A"), self)
+        deselect_all_shortcut.activated.connect(self.clear_selection)
+
+        # Ctrl+I to invert selection
+        invert_shortcut = QShortcut(QKeySequence("Ctrl+I"), self)
+        invert_shortcut.activated.connect(self.invert_selection)
+
+        # Delete to delete selected items
+        delete_shortcut = QShortcut(QKeySequence("Delete"), self)
+        delete_shortcut.activated.connect(self.bulk_delete)
+
+        logger.info("Keyboard shortcuts configured: Ctrl+F, F3, Shift+F3, Esc, Ctrl+A, Ctrl+Shift+A, Ctrl+I, Delete")
 
     def center_on_screen(self):
         """Center the window on the screen"""
@@ -312,10 +355,11 @@ class StructureDashboard(QDialog):
     def create_tree_widget(self) -> QTreeWidget:
         """Create the main tree widget"""
         tree = QTreeWidget()
-        tree.setHeaderLabels(["Nombre", "Tipo", "Info"])
-        tree.setColumnWidth(0, 400)
-        tree.setColumnWidth(1, 100)
-        tree.setColumnWidth(2, 600)
+        tree.setHeaderLabels(["☐", "Nombre", "Tipo", "Info"])
+        tree.setColumnWidth(0, 50)   # Checkbox column (aumentado para mejor visibilidad)
+        tree.setColumnWidth(1, 360)  # Name column
+        tree.setColumnWidth(2, 100)  # Type column
+        tree.setColumnWidth(3, 600)  # Info column
 
         # Enable alternating row colors
         tree.setAlternatingRowColors(True)
@@ -325,8 +369,11 @@ class StructureDashboard(QDialog):
 
         # Set custom delegate for highlighting
         self.highlight_delegate = HighlightDelegate(tree)
-        tree.setItemDelegateForColumn(0, self.highlight_delegate)  # Highlight in column 0 (Name)
-        tree.setItemDelegateForColumn(2, self.highlight_delegate)  # Highlight in column 2 (Info)
+        tree.setItemDelegateForColumn(1, self.highlight_delegate)  # Highlight in column 1 (Name)
+        tree.setItemDelegateForColumn(3, self.highlight_delegate)  # Highlight in column 3 (Info)
+
+        # Connect checkbox change signal
+        tree.itemChanged.connect(self.on_item_check_changed)
 
         # Double click to copy content
         tree.itemDoubleClicked.connect(self.on_item_double_clicked)
@@ -425,18 +472,25 @@ class StructureDashboard(QDialog):
             # Create category item (Level 1)
             category_item = QTreeWidgetItem(self.tree_widget)
 
-            # Column 0: Name with icon and item count
-            category_name = f"{category['icon']} {category['name']} ({len(category['items'])} items)"
-            category_item.setText(0, category_name)
-            category_item.setFont(0, self.get_bold_font())
+            # Column 0: Checkbox
+            category_item.setFlags(category_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            category_item.setCheckState(0, Qt.CheckState.Unchecked)
 
-            # Column 1: Type
-            category_item.setText(1, "Categoría")
+            # Column 1: Name with icon and item count
+            status_indicator = ""
+            if not category.get('is_active', 1):  # Si is_active es 0 o False
+                status_indicator = "🚫 "
+            category_name = f"{status_indicator}{category['icon']} {category['name']} ({len(category['items'])} items)"
+            category_item.setText(1, category_name)
+            category_item.setFont(1, self.get_bold_font())
 
-            # Column 2: Tags
+            # Column 2: Type
+            category_item.setText(2, "Categoría")
+
+            # Column 3: Tags
             if category['tags']:
                 tags_str = ", ".join([f"#{tag}" for tag in category['tags']])
-                category_item.setText(2, tags_str)
+                category_item.setText(3, tags_str)
 
             # Build tooltip for category
             category_tooltip_parts = []
@@ -453,11 +507,11 @@ class StructureDashboard(QDialog):
             category_tooltip_parts.append("<br><i>Click para expandir/colapsar | Click derecho para opciones</i>")
 
             category_tooltip_html = "<br>".join(category_tooltip_parts)
-            category_item.setToolTip(0, category_tooltip_html)
             category_item.setToolTip(1, category_tooltip_html)
             category_item.setToolTip(2, category_tooltip_html)
+            category_item.setToolTip(3, category_tooltip_html)
 
-            # Store category ID in user data
+            # Store category ID in user data (column 0 for identification)
             category_item.setData(0, Qt.ItemDataRole.UserRole, {
                 'type': 'category',
                 'id': category['id']
@@ -467,8 +521,18 @@ class StructureDashboard(QDialog):
             for item in category['items']:
                 item_widget = QTreeWidgetItem(category_item)
 
-                # Column 0: Item name with indicators
+                # Column 0: Checkbox
+                item_widget.setFlags(item_widget.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item_widget.setCheckState(0, Qt.CheckState.Unchecked)
+
+                # Column 1: Item name with indicators
                 indicators = ""
+                # Estado de archivo/activo (primero para mayor visibilidad)
+                if item.get('is_archived'):
+                    indicators += "📦 "
+                if not item.get('is_active', 1):  # Si is_active es 0 o False
+                    indicators += "🚫 "
+                # Otros indicadores
                 if item.get('is_list'):
                     indicators += "📝 "
                 if item['is_favorite']:
@@ -477,9 +541,9 @@ class StructureDashboard(QDialog):
                     indicators += "🔒 "
 
                 item_name = f"{indicators}{item['label']}"
-                item_widget.setText(0, item_name)
+                item_widget.setText(1, item_name)
 
-                # Column 1: Item type
+                # Column 2: Item type
                 type_icons = {
                     'CODE': '💻',
                     'URL': '🔗',
@@ -487,9 +551,9 @@ class StructureDashboard(QDialog):
                     'TEXT': '📝'
                 }
                 type_icon = type_icons.get(item['type'], '📄')
-                item_widget.setText(1, f"{type_icon} {item['type']}")
+                item_widget.setText(2, f"{type_icon} {item['type']}")
 
-                # Column 2: Tags + list_group + preview
+                # Column 3: Tags + list_group + preview
                 info_parts = []
 
                 # List group (if is_list)
@@ -508,7 +572,7 @@ class StructureDashboard(QDialog):
                         preview += "..."
                     info_parts.append(f"Preview: {preview}")
 
-                item_widget.setText(2, " | ".join(info_parts))
+                item_widget.setText(3, " | ".join(info_parts))
 
                 # Build tooltip with detailed information
                 tooltip_parts = []
@@ -541,11 +605,11 @@ class StructureDashboard(QDialog):
                 tooltip_parts.append("<br><i>Doble click para copiar | Click derecho para más opciones</i>")
 
                 tooltip_html = "<br>".join(tooltip_parts)
-                item_widget.setToolTip(0, tooltip_html)
                 item_widget.setToolTip(1, tooltip_html)
                 item_widget.setToolTip(2, tooltip_html)
+                item_widget.setToolTip(3, tooltip_html)
 
-                # Store item data
+                # Store item data (column 0 for identification)
                 item_widget.setData(0, Qt.ItemDataRole.UserRole, {
                     'type': 'item',
                     'id': item['id'],
@@ -607,6 +671,805 @@ class StructureDashboard(QDialog):
                 # Reset message after 2 seconds
                 from PyQt6.QtCore import QTimer
                 QTimer.singleShot(2000, lambda: self.update_statistics())
+
+    def on_item_check_changed(self, item: QTreeWidgetItem, column: int):
+        """
+        Handle checkbox state change for tree items
+
+        Args:
+            item: QTreeWidgetItem that changed
+            column: Column index (0 is checkbox column)
+        """
+        # Only handle changes in checkbox column
+        if column != 0:
+            return
+
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+
+        check_state = item.checkState(0)
+        is_checked = (check_state == Qt.CheckState.Checked)
+
+        # Temporarily block signals to avoid recursion
+        self.tree_widget.blockSignals(True)
+
+        try:
+            if data['type'] == 'category':
+                # Handle category selection
+                category_id = data['id']
+                self.update_category_selection(item, category_id, is_checked)
+
+            elif data['type'] == 'item':
+                # Handle item selection
+                item_id = data['id']
+                # Get parent category
+                parent_item = item.parent()
+                if parent_item:
+                    parent_data = parent_item.data(0, Qt.ItemDataRole.UserRole)
+                    if parent_data and parent_data['type'] == 'category':
+                        category_id = parent_data['id']
+                        self.update_item_selection(parent_item, category_id, item_id, is_checked)
+        finally:
+            # Re-enable signals
+            self.tree_widget.blockSignals(False)
+
+        logger.debug(f"Selection updated - Categories: {self.selected_items['categories']}, Items: {len(self.selected_items['items'])}")
+
+        # Update action bar to reflect new selection
+        self.update_action_bar()
+
+    def update_category_selection(self, category_item: QTreeWidgetItem, category_id: int, is_checked: bool):
+        """
+        Update selection state for a category and all its items
+
+        Args:
+            category_item: QTreeWidgetItem for the category
+            category_id: Category ID
+            is_checked: Whether category is checked
+        """
+        # Update category tracking
+        if is_checked:
+            if category_id not in self.selected_items['categories']:
+                self.selected_items['categories'].append(category_id)
+        else:
+            if category_id in self.selected_items['categories']:
+                self.selected_items['categories'].remove(category_id)
+
+        # Update all child items
+        for i in range(category_item.childCount()):
+            child_item = category_item.child(i)
+            child_data = child_item.data(0, Qt.ItemDataRole.UserRole)
+
+            if child_data and child_data['type'] == 'item':
+                item_id = child_data['id']
+
+                # Set checkbox state
+                child_item.setCheckState(0, Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked)
+
+                # Update items tracking
+                item_tuple = (category_id, item_id)
+                if is_checked:
+                    if item_tuple not in self.selected_items['items']:
+                        self.selected_items['items'].append(item_tuple)
+                else:
+                    if item_tuple in self.selected_items['items']:
+                        self.selected_items['items'].remove(item_tuple)
+
+    def update_item_selection(self, parent_item: QTreeWidgetItem, category_id: int, item_id: int, is_checked: bool):
+        """
+        Update selection state for an item and check parent category if needed
+
+        Args:
+            parent_item: Parent category QTreeWidgetItem
+            category_id: Category ID
+            item_id: Item ID
+            is_checked: Whether item is checked
+        """
+        # Update items tracking
+        item_tuple = (category_id, item_id)
+        if is_checked:
+            if item_tuple not in self.selected_items['items']:
+                self.selected_items['items'].append(item_tuple)
+        else:
+            if item_tuple in self.selected_items['items']:
+                self.selected_items['items'].remove(item_tuple)
+
+        # Check if all items in category are selected
+        total_items = parent_item.childCount()
+        checked_items = sum(1 for i in range(total_items)
+                           if parent_item.child(i).checkState(0) == Qt.CheckState.Checked)
+
+        # Update parent category checkbox state
+        if checked_items == 0:
+            # No items checked - uncheck category
+            parent_item.setCheckState(0, Qt.CheckState.Unchecked)
+            if category_id in self.selected_items['categories']:
+                self.selected_items['categories'].remove(category_id)
+        elif checked_items == total_items:
+            # All items checked - check category
+            parent_item.setCheckState(0, Qt.CheckState.Checked)
+            if category_id not in self.selected_items['categories']:
+                self.selected_items['categories'].append(category_id)
+        else:
+            # Some items checked - partial check (PartiallyChecked state)
+            parent_item.setCheckState(0, Qt.CheckState.PartiallyChecked)
+            if category_id in self.selected_items['categories']:
+                self.selected_items['categories'].remove(category_id)
+
+    def update_action_bar(self):
+        """Update action bar visibility and state based on current selection"""
+        items_count = len(self.selected_items['items'])
+        categories_count = len(self.selected_items['categories'])
+        total_count = items_count + categories_count
+
+        # Update action bar widget
+        self.action_bar.update_selection(total_count, items_count, categories_count)
+
+        logger.debug(f"Action bar updated: {total_count} total ({items_count} items, {categories_count} categories)")
+
+    def clear_selection(self):
+        """Clear all checkboxes and reset selection tracking"""
+        logger.info("Clearing all selections...")
+
+        # Block signals to avoid triggering on_item_check_changed multiple times
+        self.tree_widget.blockSignals(True)
+
+        try:
+            # Iterate through all top-level items (categories)
+            for i in range(self.tree_widget.topLevelItemCount()):
+                category_item = self.tree_widget.topLevelItem(i)
+                category_item.setCheckState(0, Qt.CheckState.Unchecked)
+
+                # Uncheck all child items
+                for j in range(category_item.childCount()):
+                    item_widget = category_item.child(j)
+                    item_widget.setCheckState(0, Qt.CheckState.Unchecked)
+
+            # Clear tracking arrays
+            self.selected_items['categories'].clear()
+            self.selected_items['items'].clear()
+
+            logger.info("All selections cleared")
+        finally:
+            # Re-enable signals
+            self.tree_widget.blockSignals(False)
+
+        # Update action bar (will hide it)
+        self.update_action_bar()
+
+    def select_all(self):
+        """Select all categories and items in the tree"""
+        logger.info("Selecting all elements...")
+
+        # Block signals to avoid triggering on_item_check_changed multiple times
+        self.tree_widget.blockSignals(True)
+
+        try:
+            # Iterate through all top-level items (categories)
+            for i in range(self.tree_widget.topLevelItemCount()):
+                category_item = self.tree_widget.topLevelItem(i)
+                category_data = category_item.data(0, Qt.ItemDataRole.UserRole)
+
+                if category_data and category_data['type'] == 'category':
+                    category_id = category_data['id']
+
+                    # Check category
+                    category_item.setCheckState(0, Qt.CheckState.Checked)
+
+                    # Add to tracking
+                    if category_id not in self.selected_items['categories']:
+                        self.selected_items['categories'].append(category_id)
+
+                    # Check all child items
+                    for j in range(category_item.childCount()):
+                        item_widget = category_item.child(j)
+                        item_widget.setCheckState(0, Qt.CheckState.Checked)
+
+                        # Add to tracking
+                        item_data = item_widget.data(0, Qt.ItemDataRole.UserRole)
+                        if item_data and item_data['type'] == 'item':
+                            item_id = item_data['id']
+                            item_tuple = (category_id, item_id)
+                            if item_tuple not in self.selected_items['items']:
+                                self.selected_items['items'].append(item_tuple)
+
+            logger.info(f"Selected all: {len(self.selected_items['categories'])} categories, {len(self.selected_items['items'])} items")
+        finally:
+            # Re-enable signals
+            self.tree_widget.blockSignals(False)
+
+        # Update action bar
+        self.update_action_bar()
+
+    def invert_selection(self):
+        """Invert current selection (checked become unchecked and vice versa)"""
+        logger.info("Inverting selection...")
+
+        # Block signals to avoid triggering on_item_check_changed multiple times
+        self.tree_widget.blockSignals(True)
+
+        try:
+            # Create new tracking dictionaries
+            new_categories = []
+            new_items = []
+
+            # Iterate through all top-level items (categories)
+            for i in range(self.tree_widget.topLevelItemCount()):
+                category_item = self.tree_widget.topLevelItem(i)
+                category_data = category_item.data(0, Qt.ItemDataRole.UserRole)
+
+                if category_data and category_data['type'] == 'category':
+                    category_id = category_data['id']
+                    current_state = category_item.checkState(0)
+
+                    # Invert category state
+                    if current_state == Qt.CheckState.Checked:
+                        # Was checked, uncheck it
+                        category_item.setCheckState(0, Qt.CheckState.Unchecked)
+                    else:
+                        # Was unchecked (or partial), check it
+                        category_item.setCheckState(0, Qt.CheckState.Checked)
+                        new_categories.append(category_id)
+
+                    # Invert all child items
+                    for j in range(category_item.childCount()):
+                        item_widget = category_item.child(j)
+                        item_data = item_widget.data(0, Qt.ItemDataRole.UserRole)
+
+                        if item_data and item_data['type'] == 'item':
+                            item_id = item_data['id']
+                            current_item_state = item_widget.checkState(0)
+
+                            # Invert item state
+                            if current_item_state == Qt.CheckState.Checked:
+                                item_widget.setCheckState(0, Qt.CheckState.Unchecked)
+                            else:
+                                item_widget.setCheckState(0, Qt.CheckState.Checked)
+                                new_items.append((category_id, item_id))
+
+                    # Update category state based on children
+                    checked_count = sum(1 for j in range(category_item.childCount())
+                                       if category_item.child(j).checkState(0) == Qt.CheckState.Checked)
+                    total_count = category_item.childCount()
+
+                    if checked_count == 0:
+                        category_item.setCheckState(0, Qt.CheckState.Unchecked)
+                        if category_id in new_categories:
+                            new_categories.remove(category_id)
+                    elif checked_count == total_count:
+                        category_item.setCheckState(0, Qt.CheckState.Checked)
+                        if category_id not in new_categories:
+                            new_categories.append(category_id)
+                    else:
+                        category_item.setCheckState(0, Qt.CheckState.PartiallyChecked)
+                        if category_id in new_categories:
+                            new_categories.remove(category_id)
+
+            # Update tracking
+            self.selected_items['categories'] = new_categories
+            self.selected_items['items'] = new_items
+
+            logger.info(f"Inverted selection: {len(new_categories)} categories, {len(new_items)} items now selected")
+        finally:
+            # Re-enable signals
+            self.tree_widget.blockSignals(False)
+
+        # Update action bar
+        self.update_action_bar()
+
+    # ========== BULK OPERATIONS (Fase 3 - Implemented) ==========
+
+    def bulk_set_favorite(self):
+        """Mark selected items as favorites"""
+        items_count = len(self.selected_items['items'])
+        if items_count == 0:
+            logger.warning("No items selected for favorite operation")
+            return
+
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirmar Operación",
+            f"¿Marcar {items_count} item{'s' if items_count != 1 else ''} como favorito{'s' if items_count != 1 else ''}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            error_count = 0
+
+            try:
+                # Update each item in database
+                for category_id, item_id in self.selected_items['items']:
+                    try:
+                        self.db.update_item(item_id, is_favorite=1)
+                        success_count += 1
+                        logger.debug(f"Item {item_id} marked as favorite")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error marking item {item_id} as favorite: {e}")
+
+                # Clear selection and reload
+                self.clear_selection()
+                self.load_data()
+
+                # Show result
+                if error_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "Operación Exitosa",
+                        f"✅ {success_count} item{'s' if success_count != 1 else ''} marcado{'s' if success_count != 1 else ''} como favorito{'s' if success_count != 1 else ''}"
+                    )
+                    logger.info(f"Successfully marked {success_count} items as favorites")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Operación Completada con Errores",
+                        f"✅ {success_count} item{'s' if success_count != 1 else ''} actualizado{'s' if success_count != 1 else ''}\n"
+                        f"❌ {error_count} error{'es' if error_count != 1 else ''}"
+                    )
+                    logger.warning(f"Marked {success_count} items as favorites with {error_count} errors")
+
+            except Exception as e:
+                logger.error(f"Critical error in bulk_set_favorite: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Error Crítico",
+                    f"❌ Error al marcar favoritos:\n{str(e)}"
+                )
+
+    def bulk_unset_favorite(self):
+        """Remove selected items from favorites"""
+        items_count = len(self.selected_items['items'])
+        if items_count == 0:
+            logger.warning("No items selected for unfavorite operation")
+            return
+
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirmar Operación",
+            f"¿Quitar marca de favorito de {items_count} item{'s' if items_count != 1 else ''}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            error_count = 0
+
+            try:
+                # Update each item in database
+                for category_id, item_id in self.selected_items['items']:
+                    try:
+                        self.db.update_item(item_id, is_favorite=0)
+                        success_count += 1
+                        logger.debug(f"Item {item_id} unmarked as favorite")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error unmarking item {item_id} as favorite: {e}")
+
+                # Clear selection and reload
+                self.clear_selection()
+                self.load_data()
+
+                # Show result
+                if error_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "Operación Exitosa",
+                        f"✅ {success_count} item{'s' if success_count != 1 else ''} actualizado{'s' if success_count != 1 else ''}"
+                    )
+                    logger.info(f"Successfully unmarked {success_count} items as favorites")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Operación Completada con Errores",
+                        f"✅ {success_count} item{'s' if success_count != 1 else ''} actualizado{'s' if success_count != 1 else ''}\n"
+                        f"❌ {error_count} error{'es' if error_count != 1 else ''}"
+                    )
+                    logger.warning(f"Unmarked {success_count} items as favorites with {error_count} errors")
+
+            except Exception as e:
+                logger.error(f"Critical error in bulk_unset_favorite: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Error Crítico",
+                    f"❌ Error al quitar favoritos:\n{str(e)}"
+                )
+
+    def bulk_activate(self):
+        """Activate selected categories and items"""
+        items_count = len(self.selected_items['items'])
+        categories_count = len(self.selected_items['categories'])
+        total_count = items_count + categories_count
+
+        if total_count == 0:
+            logger.warning("No elements selected for activate operation")
+            return
+
+        # Confirmation dialog
+        message = f"¿Activar {total_count} elemento{'s' if total_count != 1 else ''}?"
+        if items_count > 0 and categories_count > 0:
+            message += f"\n\n• {categories_count} categoría{'s' if categories_count != 1 else ''}\n• {items_count} item{'s' if items_count != 1 else ''}"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirmar Operación",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            error_count = 0
+
+            try:
+                # Activate categories
+                for category_id in self.selected_items['categories']:
+                    try:
+                        self.db.update_category(category_id, is_active=1)
+                        success_count += 1
+                        logger.debug(f"Category {category_id} activated")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error activating category {category_id}: {e}")
+
+                # Activate items (and unarchive them)
+                for category_id, item_id in self.selected_items['items']:
+                    try:
+                        self.db.update_item(item_id, is_active=1, is_archived=0)
+                        success_count += 1
+                        logger.debug(f"Item {item_id} activated")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error activating item {item_id}: {e}")
+
+                # Clear selection and reload
+                self.clear_selection()
+                self.load_data()
+
+                # Show result
+                if error_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "Operación Exitosa",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} activado{'s' if success_count != 1 else ''}"
+                    )
+                    logger.info(f"Successfully activated {success_count} elements")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Operación Completada con Errores",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} activado{'s' if success_count != 1 else ''}\n"
+                        f"❌ {error_count} error{'es' if error_count != 1 else ''}"
+                    )
+                    logger.warning(f"Activated {success_count} elements with {error_count} errors")
+
+            except Exception as e:
+                logger.error(f"Critical error in bulk_activate: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Error Crítico",
+                    f"❌ Error al activar elementos:\n{str(e)}"
+                )
+
+    def bulk_archive(self):
+        """Archive selected categories and items"""
+        items_count = len(self.selected_items['items'])
+        categories_count = len(self.selected_items['categories'])
+        total_count = items_count + categories_count
+
+        if total_count == 0:
+            logger.warning("No elements selected for archive operation")
+            return
+
+        # Confirmation dialog
+        message = f"¿Archivar {total_count} elemento{'s' if total_count != 1 else ''}?"
+        if items_count > 0 and categories_count > 0:
+            message += f"\n\n• {categories_count} categoría{'s' if categories_count != 1 else ''} (se desactivarán)\n• {items_count} item{'s' if items_count != 1 else ''}"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirmar Operación",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            error_count = 0
+
+            try:
+                # Archive categories (deactivate them)
+                for category_id in self.selected_items['categories']:
+                    try:
+                        self.db.update_category(category_id, is_active=0)
+                        success_count += 1
+                        logger.debug(f"Category {category_id} archived (deactivated)")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error archiving category {category_id}: {e}")
+
+                # Archive items
+                for category_id, item_id in self.selected_items['items']:
+                    try:
+                        self.db.update_item(item_id, is_archived=1)
+                        success_count += 1
+                        logger.debug(f"Item {item_id} archived")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error archiving item {item_id}: {e}")
+
+                # Clear selection and reload
+                self.clear_selection()
+                self.load_data()
+
+                # Show result
+                if error_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "Operación Exitosa",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} archivado{'s' if success_count != 1 else ''}"
+                    )
+                    logger.info(f"Successfully archived {success_count} elements")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Operación Completada con Errores",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} archivado{'s' if success_count != 1 else ''}\n"
+                        f"❌ {error_count} error{'es' if error_count != 1 else ''}"
+                    )
+                    logger.warning(f"Archived {success_count} elements with {error_count} errors")
+
+            except Exception as e:
+                logger.error(f"Critical error in bulk_archive: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Error Crítico",
+                    f"❌ Error al archivar elementos:\n{str(e)}"
+                )
+
+    def bulk_deactivate(self):
+        """Deactivate selected categories and items"""
+        items_count = len(self.selected_items['items'])
+        categories_count = len(self.selected_items['categories'])
+        total_count = items_count + categories_count
+
+        if total_count == 0:
+            logger.warning("No elements selected for deactivate operation")
+            return
+
+        # Confirmation dialog
+        message = f"¿Desactivar {total_count} elemento{'s' if total_count != 1 else ''}?"
+        if items_count > 0 and categories_count > 0:
+            message += f"\n\n• {categories_count} categoría{'s' if categories_count != 1 else ''}\n• {items_count} item{'s' if items_count != 1 else ''}"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirmar Operación",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            error_count = 0
+
+            try:
+                # Deactivate categories
+                for category_id in self.selected_items['categories']:
+                    try:
+                        self.db.update_category(category_id, is_active=0)
+                        success_count += 1
+                        logger.debug(f"Category {category_id} deactivated")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error deactivating category {category_id}: {e}")
+
+                # Deactivate items
+                for category_id, item_id in self.selected_items['items']:
+                    try:
+                        self.db.update_item(item_id, is_active=0)
+                        success_count += 1
+                        logger.debug(f"Item {item_id} deactivated")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error deactivating item {item_id}: {e}")
+
+                # Clear selection and reload
+                self.clear_selection()
+                self.load_data()
+
+                # Show result
+                if error_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "Operación Exitosa",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} desactivado{'s' if success_count != 1 else ''}"
+                    )
+                    logger.info(f"Successfully deactivated {success_count} elements")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Operación Completada con Errores",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} desactivado{'s' if success_count != 1 else ''}\n"
+                        f"❌ {error_count} error{'es' if error_count != 1 else ''}"
+                    )
+                    logger.warning(f"Deactivated {success_count} elements with {error_count} errors")
+
+            except Exception as e:
+                logger.error(f"Critical error in bulk_deactivate: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Error Crítico",
+                    f"❌ Error al desactivar elementos:\n{str(e)}"
+                )
+
+    def bulk_unarchive(self):
+        """Unarchive selected items"""
+        items_count = len(self.selected_items['items'])
+        categories_count = len(self.selected_items['categories'])
+
+        if items_count == 0:
+            logger.warning("No items selected for unarchive operation")
+            QMessageBox.information(
+                self,
+                "Sin Elementos",
+                "No hay items seleccionados para desarchivar.\nNota: Solo los items pueden ser archivados/desarchivados."
+            )
+            return
+
+        # Confirmation dialog
+        message = f"¿Desarchivar {items_count} item{'s' if items_count != 1 else ''}?"
+        if categories_count > 0:
+            message += f"\n\nNota: {categories_count} categoría{'s' if categories_count != 1 else ''} seleccionada{'s' if categories_count != 1 else ''} no se verá{'n' if categories_count != 1 else ''} afectada{'s' if categories_count != 1 else ''}\n(las categorías no tienen estado de archivo)"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirmar Operación",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            error_count = 0
+
+            try:
+                # Unarchive items
+                for category_id, item_id in self.selected_items['items']:
+                    try:
+                        self.db.update_item(item_id, is_archived=0)
+                        success_count += 1
+                        logger.debug(f"Item {item_id} unarchived")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error unarchiving item {item_id}: {e}")
+
+                # Clear selection and reload
+                self.clear_selection()
+                self.load_data()
+
+                # Show result
+                if error_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "Operación Exitosa",
+                        f"✅ {success_count} item{'s' if success_count != 1 else ''} desarchivado{'s' if success_count != 1 else ''}"
+                    )
+                    logger.info(f"Successfully unarchived {success_count} items")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Operación Completada con Errores",
+                        f"✅ {success_count} item{'s' if success_count != 1 else ''} desarchivado{'s' if success_count != 1 else ''}\n"
+                        f"❌ {error_count} error{'es' if error_count != 1 else ''}"
+                    )
+                    logger.warning(f"Unarchived {success_count} items with {error_count} errors")
+
+            except Exception as e:
+                logger.error(f"Critical error in bulk_unarchive: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Error Crítico",
+                    f"❌ Error al desarchivar items:\n{str(e)}"
+                )
+
+    def bulk_delete(self):
+        """Delete selected categories and items"""
+        items_count = len(self.selected_items['items'])
+        categories_count = len(self.selected_items['categories'])
+        total_count = items_count + categories_count
+
+        if total_count == 0:
+            logger.warning("No elements selected for delete operation")
+            return
+
+        # Warning confirmation dialog with detailed message
+        message = f"⚠️ ¿Estás SEGURO de eliminar {total_count} elemento{'s' if total_count != 1 else ''}?\n\n"
+        message += "⚠️ Esta acción NO se puede deshacer.\n\n"
+
+        if categories_count > 0:
+            message += f"• {categories_count} categoría{'s' if categories_count != 1 else ''}"
+            if categories_count == 1:
+                message += " (se eliminarán también todos sus items)"
+            else:
+                message += " (se eliminarán también todos sus items)"
+            message += "\n"
+
+        if items_count > 0:
+            message += f"• {items_count} item{'s' if items_count != 1 else ''}\n"
+
+        reply = QMessageBox.warning(
+            self,
+            "⚠️ ADVERTENCIA - Eliminar Permanentemente",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No  # Default to No for safety
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            error_count = 0
+
+            try:
+                # Delete categories (this also deletes their items via CASCADE)
+                for category_id in self.selected_items['categories']:
+                    try:
+                        self.db.delete_category(category_id)
+                        success_count += 1
+                        logger.debug(f"Category {category_id} deleted (with all its items)")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error deleting category {category_id}: {e}")
+
+                # Delete items
+                for category_id, item_id in self.selected_items['items']:
+                    try:
+                        self.db.delete_item(item_id)
+                        success_count += 1
+                        logger.debug(f"Item {item_id} deleted")
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error deleting item {item_id}: {e}")
+
+                # Clear selection and reload
+                self.clear_selection()
+                self.load_data()
+
+                # Show result
+                if error_count == 0:
+                    QMessageBox.information(
+                        self,
+                        "Operación Exitosa",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} eliminado{'s' if success_count != 1 else ''} permanentemente"
+                    )
+                    logger.info(f"Successfully deleted {success_count} elements")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Operación Completada con Errores",
+                        f"✅ {success_count} elemento{'s' if success_count != 1 else ''} eliminado{'s' if success_count != 1 else ''}\n"
+                        f"❌ {error_count} error{'es' if error_count != 1 else ''}"
+                    )
+                    logger.warning(f"Deleted {success_count} elements with {error_count} errors")
+
+            except Exception as e:
+                logger.error(f"Critical error in bulk_delete: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    "Error Crítico",
+                    f"❌ Error al eliminar elementos:\n{str(e)}"
+                )
+
+    # ========== FILTERS AND SORTING ==========
 
     def filter_favorites(self):
         """Show only favorite items"""
