@@ -213,6 +213,13 @@ class SimpleBrowserWindow(QWidget):
         self.url_bar.returnPressed.connect(self._on_url_entered)
         nav_layout.addWidget(self.url_bar)
 
+        # Botón copiar URL
+        self.copy_url_btn = QPushButton("📋")
+        self.copy_url_btn.setFixedWidth(40)
+        self.copy_url_btn.setToolTip("Copiar URL al portapapeles")
+        self.copy_url_btn.clicked.connect(self.copy_current_url)
+        nav_layout.addWidget(self.copy_url_btn)
+
         # Botón reload
         self.reload_btn = QPushButton("↻")
         self.reload_btn.setFixedWidth(40)
@@ -558,6 +565,37 @@ class SimpleBrowserWindow(QWidget):
         if browser:
             logger.info("Recargando página")
             browser.reload()
+
+    def copy_current_url(self):
+        """Copia la URL actual al portapapeles."""
+        try:
+            import pyperclip
+
+            # Obtener URL actual del campo de texto
+            current_url = self.url_bar.text()
+
+            if current_url:
+                # Copiar al portapapeles
+                pyperclip.copy(current_url)
+                logger.info(f"URL copiada al portapapeles: {current_url}")
+
+                # Feedback visual: cambiar icono temporalmente
+                original_text = self.copy_url_btn.text()
+                self.copy_url_btn.setText("✓")
+                self.copy_url_btn.setStyleSheet("color: #00ff00;")
+
+                # Restaurar después de 1 segundo
+                QTimer.singleShot(1000, lambda: self._restore_copy_button(original_text))
+            else:
+                logger.warning("No hay URL para copiar")
+
+        except Exception as e:
+            logger.error(f"Error al copiar URL: {e}", exc_info=True)
+
+    def _restore_copy_button(self, original_text):
+        """Restaura el botón de copiar a su estado original."""
+        self.copy_url_btn.setText(original_text)
+        self.copy_url_btn.setStyleSheet("")
 
     def go_back(self):
         """Navega hacia atrás en el historial de la pestaña activa."""
