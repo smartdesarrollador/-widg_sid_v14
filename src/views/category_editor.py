@@ -447,40 +447,33 @@ class CategoryEditor(QWidget):
             return
 
         logger.info(f"[ADD_ITEM] Adding item to category: {self.current_category.name} (ID: {self.current_category.id})")
-        logger.info(f"[ADD_ITEM] Current category has {len(self.current_category.items)} items before adding")
 
-        dialog = ItemEditorDialog(parent=self)
+        # Open dialog with controller and category_id - saving happens in the dialog
+        dialog = ItemEditorDialog(
+            category_id=self.current_category.id,
+            controller=self.controller,
+            parent=self
+        )
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            item_data = dialog.get_item_data()
+            # Item was saved successfully in the dialog
+            # Save the current category ID before reloading
+            current_category_id = self.current_category.id if self.current_category else None
 
-            # Create new item
-            item_id = f"item_{uuid.uuid4().hex[:8]}"
-            new_item = Item(
-                item_id=item_id,
-                label=item_data["label"],
-                content=item_data["content"],
-                item_type=item_data["type"],
-                tags=item_data["tags"],
-                is_sensitive=item_data.get("is_sensitive", False),
-                is_favorite=item_data.get("is_favorite", False),
-                description=item_data.get("description"),
-                working_dir=item_data.get("working_dir"),
-                is_active=item_data.get("is_active", True),
-                is_archived=item_data.get("is_archived", False)
-            )
+            # Reload the category from database to get updated items
+            logger.info(f"[ADD_ITEM] Item saved, reloading category data from database")
+            self.load_categories()
 
-            logger.info(f"[ADD_ITEM] Created new item: {new_item.label} (ID: {new_item.id})")
-            self.current_category.add_item(new_item)
-            logger.info(f"[ADD_ITEM] Added item to current_category, now has {len(self.current_category.items)} items")
+            # Re-select the current category by ID
+            if current_category_id:
+                for i in range(self.categories_list.count()):
+                    item = self.categories_list.item(i)
+                    category = item.data(Qt.ItemDataRole.UserRole)
+                    if category and category.id == current_category_id:
+                        self.categories_list.setCurrentItem(item)
+                        break
 
-            # Verify if the category in self.categories also has the item
-            for cat in self.categories:
-                if cat.id == self.current_category.id:
-                    logger.info(f"[ADD_ITEM] Found matching category in self.categories, it has {len(cat.items)} items")
-                    logger.info(f"[ADD_ITEM] current_category is same object as in categories: {cat is self.current_category}")
-                    break
-
-            self.refresh_items_list()
+            self.data_changed.emit()
             self.refresh_categories_list()  # Update count
             self.data_changed.emit()
         else:
@@ -570,22 +563,32 @@ class CategoryEditor(QWidget):
         list_item = selected_items[0]
         item = list_item.data(Qt.ItemDataRole.UserRole)
 
-        dialog = ItemEditorDialog(item=item, parent=self)
+        # Open dialog with item and controller - saving happens in the dialog
+        dialog = ItemEditorDialog(
+            item=item,
+            category_id=self.current_category.id,
+            controller=self.controller,
+            parent=self
+        )
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            item_data = dialog.get_item_data()
+            # Item was updated successfully in the dialog
+            # Save the current category ID before reloading
+            current_category_id = self.current_category.id if self.current_category else None
 
-            # Update item
-            item.label = item_data["label"]
-            item.content = item_data["content"]
-            item.type = item_data["type"]
-            item.tags = item_data["tags"]
-            item.is_sensitive = item_data.get("is_sensitive", False)
-            item.description = item_data.get("description")
-            item.working_dir = item_data.get("working_dir")
-            item.is_active = item_data.get("is_active", True)
-            item.is_archived = item_data.get("is_archived", False)
+            # Reload the category from database to get updated items
+            logger.info(f"[EDIT_ITEM] Item updated, reloading category data from database")
+            self.load_categories()
 
-            self.refresh_items_list()
+            # Re-select the current category by ID
+            if current_category_id:
+                for i in range(self.categories_list.count()):
+                    cat_item = self.categories_list.item(i)
+                    category = cat_item.data(Qt.ItemDataRole.UserRole)
+                    if category and category.id == current_category_id:
+                        self.categories_list.setCurrentItem(cat_item)
+                        break
+
             self.data_changed.emit()
 
     def delete_item(self):

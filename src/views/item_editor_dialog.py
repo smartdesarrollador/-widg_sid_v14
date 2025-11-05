@@ -12,9 +12,14 @@ from PyQt6.QtGui import QFont
 import sys
 from pathlib import Path
 import re
+import uuid
+import logging
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from models.item import Item, ItemType
+
+# Get logger
+logger = logging.getLogger(__name__)
 
 
 class ResizableTextEdit(QTextEdit):
@@ -94,16 +99,20 @@ class ItemEditorDialog(QDialog):
     Modal dialog with form fields for item properties
     """
 
-    def __init__(self, item=None, parent=None):
+    def __init__(self, item=None, category_id=None, controller=None, parent=None):
         """
         Initialize item editor dialog
 
         Args:
             item: Item to edit (None for new item)
+            category_id: ID of the category to add item to (required for new items)
+            controller: MainController instance (required for database operations)
             parent: Parent widget
         """
         super().__init__(parent)
         self.item = item
+        self.category_id = category_id
+        self.controller = controller
         self.is_edit_mode = item is not None
 
         self.init_ui()
@@ -527,9 +536,118 @@ class ItemEditorDialog(QDialog):
         }
 
     def on_save(self):
-        """Handle save button click"""
+        """Handle save button click - saves directly to database"""
+        # Validate form data
         if not self.validate():
             return
 
-        # Accept dialog
-        self.accept()
+        # Check if we have necessary dependencies
+        if not self.controller:
+            QMessageBox.critical(
+                self,
+                "Error",
+                "No se puede guardar: falta el controlador de la aplicación."
+            )
+            return
+
+        try:
+            # Get item data from form
+            item_data = self.get_item_data()
+
+            if self.is_edit_mode:
+                # UPDATE existing item
+                if not self.item or not self.item.id:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        "No se puede actualizar: item inválido."
+                    )
+                    return
+
+                logger.info(f"[ItemEditorDialog] Updating item: {self.item.id}")
+
+                # Update item in database
+                # Convert ItemType to uppercase string for database
+                item_type_str = item_data["type"].value.upper() if isinstance(item_data["type"], ItemType) else str(item_data["type"]).upper()
+
+                # update_item() returns None, so we catch exceptions instead
+                self.controller.config_manager.db.update_item(
+                    item_id=self.item.id,
+                    label=item_data["label"],
+                    content=item_data["content"],
+                    item_type=item_type_str,
+                    tags=item_data["tags"],
+                    description=item_data.get("description"),
+                    is_sensitive=item_data.get("is_sensitive", False),
+                    working_dir=item_data.get("working_dir"),
+                    is_active=item_data.get("is_active", True),
+                    is_archived=item_data.get("is_archived", False)
+                )
+
+                # If no exception was raised, the update was successful
+                logger.info(f"[ItemEditorDialog] Item updated successfully: {item_data['label']}")
+                QMessageBox.information(
+                    self,
+                    "Éxito",
+                    f"El item '{item_data['label']}' se actualizó correctamente."
+                )
+                # Invalidate filter cache
+                if hasattr(self.controller, 'invalidate_filter_cache'):
+                    self.controller.invalidate_filter_cache()
+                self.accept()
+
+            else:
+                # ADD new item
+                if not self.category_id:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        "No se puede crear: falta la categoría."
+                    )
+                    return
+
+                logger.info(f"[ItemEditorDialog] Adding new item to category: {self.category_id}")
+
+                # Add item to database
+                # Convert ItemType to uppercase string for database
+                item_type_str = item_data["type"].value.upper() if isinstance(item_data["type"], ItemType) else str(item_data["type"]).upper()
+
+                item_id = self.controller.config_manager.db.add_item(
+                    category_id=self.category_id,
+                    label=item_data["label"],
+                    content=item_data["content"],
+                    item_type=item_type_str,
+                    tags=item_data["tags"],
+                    description=item_data.get("description"),
+                    is_sensitive=item_data.get("is_sensitive", False),
+                    working_dir=item_data.get("working_dir"),
+                    is_active=item_data.get("is_active", True),
+                    is_archived=item_data.get("is_archived", False)
+                )
+
+                if item_id:
+                    logger.info(f"[ItemEditorDialog] Item added successfully with ID: {item_id}")
+                    QMessageBox.information(
+                        self,
+                        "Éxito",
+                        f"El item '{item_data['label']}' se guardó correctamente."
+                    )
+                    # Invalidate filter cache
+                    if hasattr(self.controller, 'invalidate_filter_cache'):
+                        self.controller.invalidate_filter_cache()
+                    self.accept()
+                else:
+                    logger.error(f"[ItemEditorDialog] Failed to add item")
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        "No se pudo guardar el item en la base de datos."
+                    )
+
+        except Exception as e:
+            logger.error(f"[ItemEditorDialog] Error saving item: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error al guardar el item:\n{str(e)}"
+            )

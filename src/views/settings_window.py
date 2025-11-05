@@ -144,26 +144,23 @@ class SettingsWindow(QDialog):
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(10)
 
-        # Cancel button
-        self.cancel_button = QPushButton("Cancelar")
-        self.cancel_button.clicked.connect(self.reject)
-        buttons_layout.addWidget(self.cancel_button)
-
         buttons_layout.addStretch()
 
-        # Apply button
-        self.apply_button = QPushButton("Aplicar")
-        self.apply_button.setObjectName("apply_button")
-        self.apply_button.clicked.connect(self.apply_settings)
-        buttons_layout.addWidget(self.apply_button)
-
-        # Save button
-        self.save_button = QPushButton("Guardar")
-        self.save_button.setObjectName("save_button")
-        self.save_button.clicked.connect(self.save_settings)
-        buttons_layout.addWidget(self.save_button)
+        # Close button (items are saved automatically in ItemEditorDialog)
+        self.close_button = QPushButton("Cerrar")
+        self.close_button.setObjectName("save_button")  # Keep the same style
+        self.close_button.clicked.connect(self.close_settings)
+        buttons_layout.addWidget(self.close_button)
 
         main_layout.addLayout(buttons_layout)
+
+    def close_settings(self):
+        """Close settings window and emit settings_changed signal"""
+        logger.info("[SettingsWindow] Closing settings window")
+        # Emit settings_changed to trigger UI refresh in main window
+        self.settings_changed.emit()
+        # Accept (close) the dialog
+        self.accept()
 
     def load_settings(self):
         """Load current settings into all tabs"""
