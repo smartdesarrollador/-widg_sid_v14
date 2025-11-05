@@ -7,10 +7,10 @@ import ctypes
 from ctypes import wintypes
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
-    QPushButton, QLabel, QMessageBox, QApplication
+    QPushButton, QLabel, QMessageBox, QApplication, QMenu
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QAction
 from views.widgets.notebook_tab import NotebookTab
 import logging
 
@@ -136,6 +136,15 @@ class NotebookWindow(QWidget):
         layout.addWidget(icon_label)
         layout.addWidget(title_label)
         layout.addStretch()
+
+        # Botón para mostrar lista de pestañas
+        self.tabs_list_btn = QPushButton("📑")
+        self.tabs_list_btn.setFixedSize(35, 35)
+        self.tabs_list_btn.setObjectName("tabsListBtn")
+        self.tabs_list_btn.setToolTip("Ver todas las pestañas")
+        self.tabs_list_btn.clicked.connect(self.show_tabs_menu)
+
+        layout.addWidget(self.tabs_list_btn)
 
         # Botones de control
         min_btn = QPushButton("−")
@@ -374,6 +383,81 @@ class NotebookWindow(QWidget):
         if not data['label'] and not data['content']:
             self.close_tab(current_index)
 
+    def show_tabs_menu(self):
+        """Mostrar menú desplegable con todas las pestañas disponibles"""
+        if self.tab_widget.count() == 0:
+            return
+
+        # Crear menú
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2D2D2D;
+                color: #FFFFFF;
+                border: 1px solid #3D3D3D;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 30px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #0078D4;
+            }
+            QMenu::item:disabled {
+                color: #808080;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #3D3D3D;
+                margin: 5px 0px;
+            }
+        """)
+
+        # Obtener índice de pestaña activa
+        current_index = self.tab_widget.currentIndex()
+
+        # Agregar cada pestaña al menú
+        for i in range(self.tab_widget.count()):
+            tab_title = self.tab_widget.tabText(i)
+
+            # Crear acción con número de pestaña
+            action_text = f"{i + 1}. {tab_title}"
+
+            # Marcar la pestaña activa
+            if i == current_index:
+                action_text = f"✓ {action_text}"
+
+            action = QAction(action_text, self)
+            action.setData(i)  # Guardar índice en la acción
+
+            # Conectar acción para cambiar a esa pestaña
+            action.triggered.connect(lambda checked, idx=i: self.switch_to_tab(idx))
+
+            # Deshabilitar la acción de la pestaña activa (ya estamos en ella)
+            if i == current_index:
+                action.setEnabled(False)
+
+            menu.addAction(action)
+
+        # Agregar separador y opción para crear nueva pestaña
+        menu.addSeparator()
+        new_tab_action = QAction("➕ Nueva Pestaña", self)
+        new_tab_action.triggered.connect(self.add_new_tab)
+        menu.addAction(new_tab_action)
+
+        # Mostrar menú en la posición del botón
+        button_pos = self.tabs_list_btn.mapToGlobal(self.tabs_list_btn.rect().bottomLeft())
+        menu.exec(button_pos)
+
+        logger.debug(f"Tabs menu shown with {self.tab_widget.count()} tabs")
+
+    def switch_to_tab(self, index):
+        """Cambiar a una pestaña específica"""
+        if 0 <= index < self.tab_widget.count():
+            self.tab_widget.setCurrentIndex(index)
+            logger.debug(f"Switched to tab at index {index}")
+
     def setup_autosave(self):
         """Configurar auto-guardado periódico"""
         self.autosave_timer = QTimer()
@@ -469,13 +553,22 @@ class NotebookWindow(QWidget):
                 border-bottom: 1px solid #3D3D3D;
             }
 
-            #minBtn, #closeBtn {
+            #tabsListBtn, #minBtn, #closeBtn {
                 background-color: transparent;
                 border: none;
                 border-radius: 4px;
                 font-size: 20px;
                 font-weight: bold;
                 color: #B0B0B0;
+            }
+
+            #tabsListBtn {
+                font-size: 16px;
+            }
+
+            #tabsListBtn:hover {
+                background-color: #3D3D3D;
+                color: #FFFFFF;
             }
 
             #minBtn:hover {
