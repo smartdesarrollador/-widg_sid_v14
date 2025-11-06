@@ -4,10 +4,15 @@ Save Snippet Dialog - Dialog para guardar texto seleccionado como snippet
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QTextEdit, QComboBox, QPushButton, QMessageBox,
-    QRadioButton, QButtonGroup
+    QRadioButton, QButtonGroup, QScrollArea
 )
 from PyQt6.QtCore import Qt
+import sys
+from pathlib import Path
 import logging
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from views.widgets.tag_group_selector import TagGroupSelector
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +29,20 @@ class SaveSnippetDialog(QDialog):
     - Tags (opcional)
     """
 
-    def __init__(self, selected_text: str, categories: list, parent=None):
+    def __init__(self, selected_text: str, categories: list, db_path: str = None, parent=None):
         """
         Inicializa el dialog.
 
         Args:
             selected_text: Texto seleccionado en el navegador
             categories: Lista de categorías disponibles
+            db_path: Path a la base de datos para TagGroupSelector
             parent: Widget padre
         """
         super().__init__(parent)
         self.selected_text = selected_text
         self.categories = categories
+        self.db_path = db_path
         self.selected_category_id = None
         self.selected_type = 'TEXT'  # Default
 
@@ -243,6 +250,51 @@ class SaveSnippetDialog(QDialog):
         """)
         layout.addWidget(self.tags_input)
 
+        # Tag Group Selector (optional) - wrapped in scroll area
+        if self.db_path:
+            try:
+                self.tag_group_selector = TagGroupSelector(self.db_path, self)
+                self.tag_group_selector.tags_changed.connect(self.on_tag_group_changed)
+
+                # Create scroll area for tag group selector
+                tags_scroll_area = QScrollArea()
+                tags_scroll_area.setWidget(self.tag_group_selector)
+                tags_scroll_area.setWidgetResizable(True)
+                tags_scroll_area.setFixedHeight(120)  # Fixed height with scroll
+                tags_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                tags_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                tags_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+                tags_scroll_area.setStyleSheet("""
+                    QScrollArea {
+                        border: 1px solid #3d3d3d;
+                        border-radius: 4px;
+                        background-color: #2d2d2d;
+                    }
+                    QScrollBar:vertical {
+                        background-color: #2d2d2d;
+                        width: 12px;
+                        border-radius: 6px;
+                    }
+                    QScrollBar::handle:vertical {
+                        background-color: #5a5a5a;
+                        border-radius: 6px;
+                        min-height: 20px;
+                    }
+                    QScrollBar::handle:vertical:hover {
+                        background-color: #007acc;
+                    }
+                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                        height: 0px;
+                    }
+                """)
+
+                layout.addWidget(tags_scroll_area)
+            except Exception as e:
+                logger.warning(f"Could not initialize TagGroupSelector: {e}")
+                self.tag_group_selector = None
+        else:
+            self.tag_group_selector = None
+
         # === Botones ===
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
@@ -295,6 +347,18 @@ class SaveSnippetDialog(QDialog):
                 color: #ffffff;
             }
         """)
+
+    def on_tag_group_changed(self, tags: list):
+        """Handle tag group selector changes"""
+        try:
+            # Actualizar el campo de tags con los tags seleccionados
+            if tags:
+                self.tags_input.setText(", ".join(tags))
+            else:
+                self.tags_input.setText("")
+            logger.debug(f"Tags updated from tag group selector: {tags}")
+        except Exception as e:
+            logger.error(f"Error updating tags from tag group selector: {e}")
 
     def _generate_auto_label(self):
         """Genera un label automático basado en el texto seleccionado."""

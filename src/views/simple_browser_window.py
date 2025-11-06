@@ -1653,9 +1653,11 @@ class SimpleBrowserWindow(QWidget):
             # Mostrar dialog
             from src.views.dialogs.save_snippet_dialog import SaveSnippetDialog
 
+            db_path = str(self.db.db_path) if hasattr(self.db, 'db_path') else None
             dialog = SaveSnippetDialog(
                 selected_text=selected_text,
                 categories=categories,
+                db_path=db_path,
                 parent=self
             )
 
