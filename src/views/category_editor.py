@@ -541,7 +541,8 @@ class CategoryEditor(QWidget):
         from views.dialogs.bulk_item_dialog import BulkItemDialog
 
         # Abrir diálogo de creación masiva
-        dialog = BulkItemDialog(category.name, self)
+        db_path = str(self.controller.config_manager.db.db_path) if self.controller and hasattr(self.controller, 'config_manager') and hasattr(self.controller.config_manager, 'db') else None
+        dialog = BulkItemDialog(category.name, db_path, self)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             items_data = dialog.get_items_data()
