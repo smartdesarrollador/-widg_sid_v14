@@ -577,6 +577,97 @@ class ConfigManager:
             'tags': item.tags
         }
 
+    # ==================== Files Configuration Methods ====================
+
+    def get_files_base_path(self) -> str:
+        """
+        Get base path for file storage
+
+        Returns:
+            str: Base path for file storage (empty string if not configured)
+        """
+        return self.get_setting('files_base_path', '')
+
+    def set_files_base_path(self, path: str) -> bool:
+        """
+        Set base path for file storage
+
+        Args:
+            path: Base directory path
+
+        Returns:
+            bool: True if successful
+        """
+        return self.set_setting('files_base_path', path)
+
+    def get_files_folders_config(self) -> Dict[str, str]:
+        """
+        Get folders configuration for file types
+
+        Returns:
+            Dict[str, str]: Mapping of file types to folder names
+        """
+        default_config = {
+            "VIDEOS": "VIDEOS",
+            "IMAGENES": "IMAGENES",
+            "PDFS": "PDFS",
+            "WORDS": "WORDS",
+            "EXCELS": "EXCELS",
+            "TEXT": "TEXT",
+            "OTROS": "OTROS"
+        }
+
+        config = self.get_setting('files_folders_config', default_config)
+
+        # DBManager.get_setting auto-parses JSON, so config might already be a dict
+        if isinstance(config, dict):
+            return config
+        elif isinstance(config, str):
+            try:
+                return json.loads(config)
+            except json.JSONDecodeError:
+                return default_config
+        else:
+            return default_config
+
+    def set_files_folders_config(self, config: Dict[str, str]) -> bool:
+        """
+        Set folders configuration for file types
+
+        Args:
+            config: Dict mapping file types to folder names
+
+        Returns:
+            bool: True if successful
+        """
+        config_json = json.dumps(config)
+        return self.set_setting('files_folders_config', config_json)
+
+    def get_files_auto_create_folders(self) -> bool:
+        """
+        Get auto-create folders setting
+
+        Returns:
+            bool: True if folders should be created automatically
+        """
+        value = self.get_setting('files_auto_create_folders', 'true')
+        return value.lower() == 'true' if isinstance(value, str) else bool(value)
+
+    def set_files_auto_create_folders(self, auto_create: bool) -> bool:
+        """
+        Set auto-create folders setting
+
+        Args:
+            auto_create: True to auto-create folders, False otherwise
+
+        Returns:
+            bool: True if successful
+        """
+        value = 'true' if auto_create else 'false'
+        return self.set_setting('files_auto_create_folders', value)
+
+    # ======================================================================
+
     def __del__(self):
         """Cleanup: close database connection"""
         try:

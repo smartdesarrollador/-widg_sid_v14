@@ -40,7 +40,14 @@
       "Bash(if not exist \"tests\" mkdir \"tests\")",
       "Bash(if not exist \"util\\migrations\" mkdir \"util\\migrations\")",
       "Bash(tasklist /FI \"IMAGENAME eq python.exe\" 2)",
-      "Bash(del generate_db_schema.py)"
+      "Bash(del generate_db_schema.py)",
+      "Bash(Out-Null)",
+      "Bash(utiltest_item_model.py)",
+      "Bash(util/test_item_model.py)",
+      "Bash(del utiltest_item_model.py)",
+      "Bash(test_output.txt)",
+      "Bash(test_output2.txt)",
+      "Bash(test_full.txt)"
     ],
     "deny": [],
     "ask": []

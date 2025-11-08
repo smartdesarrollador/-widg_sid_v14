@@ -6,7 +6,7 @@ Dialog for creating and editing items
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QTextEdit, QComboBox, QPushButton, QFormLayout, QMessageBox, QCheckBox,
-    QFrame, QScrollArea
+    QFrame, QScrollArea, QFileDialog, QGroupBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -15,10 +15,12 @@ from pathlib import Path
 import re
 import uuid
 import logging
+import os
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from models.item import Item, ItemType
 from views.widgets.tag_group_selector import TagGroupSelector
+from core.file_manager import FileManager
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -116,6 +118,15 @@ class ItemEditorDialog(QDialog):
         self.category_id = category_id
         self.controller = controller
         self.is_edit_mode = item is not None
+
+        # File management for PATH items
+        self.file_manager = None
+        if self.controller and hasattr(self.controller, 'config_manager'):
+            self.file_manager = FileManager(self.controller.config_manager)
+
+        # Selected file metadata (for PATH items)
+        self.selected_file_path = None
+        self.selected_file_metadata = None
 
         self.init_ui()
         self.load_item_data()
@@ -278,6 +289,9 @@ class ItemEditorDialog(QDialog):
         # Connect type change to show/hide working dir field
         self.type_combo.currentIndexChanged.connect(self.on_type_changed)
 
+        # File selector section (only for PATH items)
+        self._create_file_selector_section(form_layout)
+
         # Sensitive checkbox
         self.sensitive_checkbox = QCheckBox("Marcar como sensible (cifrar contenido)")
         self.sensitive_checkbox.setStyleSheet("""
@@ -411,13 +425,75 @@ class ItemEditorDialog(QDialog):
 
         main_layout.addLayout(buttons_layout)
 
+    def _create_file_selector_section(self, form_layout):
+        """Create file selector section for PATH items"""
+        # Create group box for file selection
+        self.file_selector_group = QGroupBox()
+        file_selector_layout = QVBoxLayout(self.file_selector_group)
+        file_selector_layout.setSpacing(10)
+        file_selector_layout.setContentsMargins(10, 15, 10, 10)
+
+        # Description label
+        desc_label = QLabel("📁 Guardar Archivo en Almacenamiento Organizado")
+        desc_label.setStyleSheet("font-weight: bold; color: #cccccc; font-size: 11pt;")
+        file_selector_layout.addWidget(desc_label)
+
+        info_label = QLabel(
+            "Selecciona un archivo para guardarlo en el almacenamiento organizado.\n"
+            "El archivo se copiará automáticamente a la carpeta correspondiente según su tipo."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #888; font-size: 10pt; padding: 5px 0;")
+        file_selector_layout.addWidget(info_label)
+
+        # Select file button
+        button_layout = QHBoxLayout()
+        self.select_file_btn = QPushButton("📂 Seleccionar Archivo")
+        self.select_file_btn.setMinimumHeight(35)
+        self.select_file_btn.clicked.connect(self.on_select_file)
+        button_layout.addWidget(self.select_file_btn)
+        button_layout.addStretch()
+        file_selector_layout.addLayout(button_layout)
+
+        # File info display (initially hidden)
+        self.file_info_group = QGroupBox("📄 Información del Archivo")
+        file_info_layout = QFormLayout(self.file_info_group)
+        file_info_layout.setContentsMargins(10, 10, 10, 10)
+
+        self.file_name_label = QLabel("")
+        self.file_size_label = QLabel("")
+        self.file_type_label = QLabel("")
+        self.file_destination_label = QLabel("")
+        self.file_duplicate_label = QLabel("")
+
+        file_info_layout.addRow("Nombre:", self.file_name_label)
+        file_info_layout.addRow("Tamaño:", self.file_size_label)
+        file_info_layout.addRow("Tipo:", self.file_type_label)
+        file_info_layout.addRow("Destino:", self.file_destination_label)
+        file_info_layout.addRow("", self.file_duplicate_label)
+
+        self.file_info_group.hide()  # Initially hidden
+        file_selector_layout.addWidget(self.file_info_group)
+
+        # Add group to form layout
+        form_layout.addRow("", self.file_selector_group)
+
+        # Initially hide entire file selector section
+        self.file_selector_group.hide()
+
     def on_type_changed(self):
-        """Handle type combo change - show/hide working dir field"""
+        """Handle type combo change - show/hide working dir field and file selector"""
         selected_type = self.type_combo.currentData()
         is_code = (selected_type == ItemType.CODE)
+        is_path = (selected_type == ItemType.PATH)
 
+        # Show/hide working dir for CODE items
         self.working_dir_label.setVisible(is_code)
         self.working_dir_input.setVisible(is_code)
+
+        # Show/hide file selector for PATH items
+        if hasattr(self, 'file_selector_group'):
+            self.file_selector_group.setVisible(is_path)
 
     def on_tag_group_changed(self, tags: list):
         """Handle tag group selector changes"""
@@ -430,6 +506,130 @@ class ItemEditorDialog(QDialog):
             logger.debug(f"Tags updated from tag group selector: {tags}")
         except Exception as e:
             logger.error(f"Error updating tags from tag group selector: {e}")
+
+    def on_select_file(self):
+        """Handle file selection for PATH items"""
+        if not self.file_manager:
+            QMessageBox.warning(
+                self,
+                "FileManager No Disponible",
+                "No se puede acceder al gestor de archivos."
+            )
+            return
+
+        # Check if base path is configured
+        base_path = self.file_manager.get_base_path()
+        if not base_path or not os.path.exists(base_path):
+            reply = QMessageBox.question(
+                self,
+                "Ruta Base No Configurada",
+                "La ruta base de almacenamiento no está configurada.\n\n"
+                "¿Deseas ir a Configuración > Archivos para configurarla ahora?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                # User should go to settings manually
+                QMessageBox.information(
+                    self,
+                    "Ir a Configuración",
+                    "Por favor, ve a Configuración > Archivos y configura la ruta base de almacenamiento."
+                )
+            return
+
+        # Open file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar Archivo para Guardar",
+            "",
+            "Todos los archivos (*.*)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            # Get file metadata
+            logger.info(f"[ItemEditor] File selected: {file_path}")
+            metadata = self.file_manager.get_file_metadata(file_path)
+
+            # Check for duplicates by hash
+            duplicate_item = self.file_manager.check_duplicate(metadata['file_hash'])
+
+            if duplicate_item:
+                # File already exists
+                reply = QMessageBox.question(
+                    self,
+                    "⚠️ Archivo Duplicado",
+                    f"Este archivo ya existe en el sistema:\n\n"
+                    f"📄 {duplicate_item.label}\n"
+                    f"📁 Categoría: {duplicate_item.id}\n"
+                    f"📅 Guardado previamente\n\n"
+                    f"¿Deseas guardarlo de todas formas como un nuevo item?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+
+                if reply == QMessageBox.StandardButton.No:
+                    return  # User cancelled
+
+                # Show duplicate warning in UI
+                self.file_duplicate_label.setText(
+                    "⚠️ Advertencia: Este archivo ya existe en el sistema"
+                )
+                self.file_duplicate_label.setStyleSheet("color: orange; font-weight: bold;")
+            else:
+                self.file_duplicate_label.setText("")
+
+            # Store selected file info
+            self.selected_file_path = file_path
+            self.selected_file_metadata = metadata
+
+            # Update UI with file info
+            self.file_name_label.setText(metadata['original_filename'])
+            self.file_size_label.setText(self.file_manager.format_file_size(metadata['file_size']))
+
+            # Get file type icon
+            file_type_icon = self.file_manager.get_file_icon_by_type(metadata['file_type'])
+            self.file_type_label.setText(f"{file_type_icon} {metadata['file_type']}")
+
+            # Show destination folder
+            target_folder = self.file_manager.get_target_folder(metadata['file_extension'])
+
+            # Mostrar ruta completa solo como información (en el label)
+            full_destination = os.path.join(base_path, target_folder, metadata['original_filename'])
+            self.file_destination_label.setText(full_destination)
+            self.file_destination_label.setWordWrap(True)
+            self.file_destination_label.setStyleSheet("color: #888; font-size: 9pt;")
+
+            # Show file info group
+            self.file_info_group.show()
+
+            # Auto-fill label if empty
+            if not self.label_input.text().strip():
+                # Use filename without extension as label
+                filename_base = Path(metadata['original_filename']).stem
+                self.label_input.setText(filename_base)
+
+            # IMPORTANTE: Guardar RUTA RELATIVA en content (portable)
+            relative_path = f"{target_folder}/{metadata['original_filename']}"
+            self.content_input.setPlainText(relative_path)
+            self.content_input.setReadOnly(True)  # Make read-only since it's auto-generated
+
+            # Agregar tooltip explicativo
+            self.content_input.setToolTip(
+                f"Ruta relativa (portable): {relative_path}\n"
+                f"Se guardará en: {full_destination}"
+            )
+
+            logger.info(f"[ItemEditor] File metadata extracted: {metadata}")
+
+        except Exception as e:
+            logger.error(f"[ItemEditor] Error selecting file: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error al procesar el archivo:\n{str(e)}"
+            )
 
     def load_item_data(self):
         """Load existing item data if in edit mode"""
@@ -590,7 +790,7 @@ class ItemEditorDialog(QDialog):
         if self.type_combo.currentData() == ItemType.CODE:
             working_dir = self.working_dir_input.text().strip() or None
 
-        return {
+        data = {
             "label": self.label_input.text().strip(),
             "content": self.content_input.toPlainText().strip(),
             "type": self.type_combo.currentData(),
@@ -601,6 +801,18 @@ class ItemEditorDialog(QDialog):
             "is_active": self.active_checkbox.isChecked(),
             "is_archived": self.archived_checkbox.isChecked()
         }
+
+        # Add file metadata if PATH item with selected file
+        if self.type_combo.currentData() == ItemType.PATH and self.selected_file_metadata:
+            data.update({
+                "file_size": self.selected_file_metadata.get('file_size'),
+                "file_type": self.selected_file_metadata.get('file_type'),
+                "file_extension": self.selected_file_metadata.get('file_extension'),
+                "original_filename": self.selected_file_metadata.get('original_filename'),
+                "file_hash": self.selected_file_metadata.get('file_hash')
+            })
+
+        return data
 
     def on_save(self):
         """Handle save button click - saves directly to database"""
@@ -618,6 +830,44 @@ class ItemEditorDialog(QDialog):
             return
 
         try:
+            # Copy file if PATH item with selected file
+            if (self.type_combo.currentData() == ItemType.PATH and
+                self.selected_file_path and
+                self.selected_file_metadata and
+                self.file_manager):
+
+                try:
+                    logger.info(f"[ItemEditor] Copying file to storage: {self.selected_file_path}")
+
+                    # Copy file to organized storage
+                    copy_result = self.file_manager.copy_file_to_storage(self.selected_file_path)
+
+                    if copy_result and copy_result.get('success'):
+                        # IMPORTANTE: Guardar RUTA RELATIVA (portable) en content
+                        relative_path = copy_result.get('relative_path')
+                        self.content_input.setPlainText(relative_path)
+
+                        # Log con ruta completa para debugging
+                        actual_destination = copy_result.get('destination_path')
+                        logger.info(f"[ItemEditor] File copied successfully to: {actual_destination}")
+                        logger.info(f"[ItemEditor] Relative path saved: {relative_path}")
+                    else:
+                        error_msg = copy_result.get('error', 'Error desconocido') if copy_result else 'Error al copiar archivo'
+                        raise Exception(error_msg)
+
+                except Exception as copy_error:
+                    logger.error(f"[ItemEditor] Error copying file: {copy_error}")
+                    reply = QMessageBox.question(
+                        self,
+                        "Error al Copiar Archivo",
+                        f"No se pudo copiar el archivo al almacenamiento:\n{str(copy_error)}\n\n"
+                        f"¿Deseas guardar el item de todas formas sin copiar el archivo?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.No:
+                        return
+
             # Get item data from form
             item_data = self.get_item_data()
 
@@ -648,7 +898,13 @@ class ItemEditorDialog(QDialog):
                     is_sensitive=item_data.get("is_sensitive", False),
                     working_dir=item_data.get("working_dir"),
                     is_active=item_data.get("is_active", True),
-                    is_archived=item_data.get("is_archived", False)
+                    is_archived=item_data.get("is_archived", False),
+                    # File metadata (if present)
+                    file_size=item_data.get("file_size"),
+                    file_type=item_data.get("file_type"),
+                    file_extension=item_data.get("file_extension"),
+                    original_filename=item_data.get("original_filename"),
+                    file_hash=item_data.get("file_hash")
                 )
 
                 # If no exception was raised, the update was successful
@@ -689,7 +945,13 @@ class ItemEditorDialog(QDialog):
                     is_sensitive=item_data.get("is_sensitive", False),
                     working_dir=item_data.get("working_dir"),
                     is_active=item_data.get("is_active", True),
-                    is_archived=item_data.get("is_archived", False)
+                    is_archived=item_data.get("is_archived", False),
+                    # File metadata (if present)
+                    file_size=item_data.get("file_size"),
+                    file_type=item_data.get("file_type"),
+                    file_extension=item_data.get("file_extension"),
+                    original_filename=item_data.get("original_filename"),
+                    file_hash=item_data.get("file_hash")
                 )
 
                 if item_id:

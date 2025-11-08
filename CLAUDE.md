@@ -1,305 +1,380 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Este archivo proporciona guía a Claude Code (claude.ai/code) al trabajar con código en este repositorio.
 
-## Project Overview
+## Descripción del Proyecto
 
-Widget Sidebar is a Windows desktop application for managing clipboard content, built with PyQt6 and SQLite. It provides a persistent sidebar widget for quick access to frequently used commands, URLs, and code snippets. Features include password protection, encrypted sensitive items, favorites, usage tracking, advanced filtering, and global search.
+**Widget Sidebar** es una aplicación de escritorio para Windows diseñada como un gestor avanzado de portapapeles y biblioteca de snippets. Construida con PyQt6 y SQLite, proporciona un sidebar persistente siempre visible en el borde derecho de la pantalla para acceso instantáneo a comandos, URLs, fragmentos de código y texto frecuentemente utilizados.
 
-**Version:** 3.0.0 (SQLite Edition)
-**Platform:** Windows 10/11
+### Propósito
+Facilitar el flujo de trabajo de desarrolladores y usuarios avanzados mediante:
+- Acceso inmediato a comandos y snippets sin cambiar de aplicación
+- Organización inteligente de contenido mediante categorías personalizables
+- Copiar al portapapeles con un solo clic desde cualquier lugar
+- Protección de información sensible con cifrado y autenticación
+
+### Características Principales
+- **Sidebar persistente**: Panel lateral frameless de 70px, siempre visible (always-on-top)
+- **Gestión por categorías**: Organización jerárquica con iconos emoji y sistema de tags
+- **Seguridad robusta**: Autenticación con contraseña maestra, cifrado Fernet para items sensibles
+- **Búsqueda global**: Búsqueda en tiempo real a través de todas las categorías e items
+- **Sistema de favoritos**: Marcado rápido de items más utilizados
+- **Tracking de uso**: Estadísticas y analytics de frecuencia de uso
+- **Filtrado avanzado**: Múltiples criterios (texto, rangos numéricos, fechas, métricas)
+- **Hotkey global**: `Ctrl+Shift+V` muestra/oculta el widget desde cualquier aplicación
+- **Integración system tray**: Minimiza a bandeja del sistema con menú contextual
+- **Navegador embebido**: Captura de snippets desde páginas web con detección automática
+- **Dashboard estadístico**: Visualización de métricas de uso y patrones
+
+**Versión:** 3.0.0 (SQLite Edition)
+**Plataforma:** Windows 10/11
 **Python:** 3.10+
 
-## Development Commands
+## Comandos de Desarrollo
 
-### Running the Application
+### Ejecutar la Aplicación
 ```bash
-# From source (requires Python 3.10+)
+# Desde el código fuente (requiere Python 3.10+)
 python main.py
 
-# From virtual environment
+# Desde entorno virtual
 .\venv\Scripts\activate
 python main.py
 ```
 
-### Building Executable
+### Construir Ejecutable
 ```bash
-# Build standalone .exe with PyInstaller
+# Construir .exe standalone con PyInstaller
 build.bat
 
-# Output location: dist\WidgetSidebar.exe
-# Distribution package: WidgetSidebar_v2.0\
+# Ubicación salida: dist\WidgetSidebar.exe
+# Paquete distribución: WidgetSidebar_v2.0\
 ```
 
-### Dependencies
+### Dependencias
 ```bash
-# Install all dependencies
+# Instalar todas las dependencias
 pip install -r requirements.txt
 
-# Core dependencies:
-# - PyQt6 (6.7.0) - GUI framework
-# - pyperclip (1.9.0) - Clipboard management
-# - pynput (1.7.7) - Global hotkey capture
-# - cryptography (41.0.7) - Encryption for sensitive items
-# - python-dotenv (1.0.0) - Environment variable management
+# Dependencias principales:
+# - PyQt6 (6.7.0) - Framework GUI
+# - pyperclip (1.9.0) - Gestión del portapapeles
+# - pynput (1.7.7) - Captura de hotkeys globales
+# - cryptography (41.0.7) - Cifrado para items sensibles
+# - python-dotenv (1.0.0) - Gestión de variables de entorno
+# - bcrypt (4.0.1) - Hash de contraseñas
+# - PyQtWebEngine (6.7.0) - Navegador embebido
 ```
 
-## Architecture
+## Arquitectura
 
-### MVC Pattern
-The application follows Model-View-Controller architecture:
+### Patrón MVC
+La aplicación sigue la arquitectura Model-View-Controller:
 
-- **Models** (`src/models/`): Data structures (Category, Item, Config)
-- **Views** (`src/views/`): PyQt6 UI components (MainWindow, Sidebar, ContentPanel, SettingsWindow, FloatingPanel)
-- **Controllers** (`src/controllers/`): Business logic (MainController, ClipboardController, NavigationController)
+- **Models** (`src/models/`): Estructuras de datos (Category, Item, Config, TagGroup)
+- **Views** (`src/views/`): Componentes UI PyQt6 (MainWindow, Sidebar, ContentPanel, SettingsWindow, FloatingPanel)
+- **Controllers** (`src/controllers/`): Lógica de negocio (MainController, ClipboardController, NavigationController)
 
 ### Core Managers (`src/core/`)
-- `config_manager.py`: Configuration persistence via SQLite
-- `clipboard_manager.py`: Clipboard operations using pyperclip
-- `hotkey_manager.py`: Global hotkey handling with pynput
-- `tray_manager.py`: System tray integration
-- `search_engine.py`: Real-time search with debouncing
-- `state_manager.py`: Application state management
-- `auth_manager.py`: User authentication using bcrypt password hashing
-- `session_manager.py`: Session management with automatic expiry
-- `encryption_manager.py`: Fernet encryption for sensitive item content
-- `favorites_manager.py`: Favorites tracking and management
-- `usage_tracker.py`: Item usage statistics and analytics
-- `stats_manager.py`: Dashboard statistics aggregation
-- `notification_manager.py`: In-app notification system
-- `category_filter_engine.py`: Category filtering with caching
-- `advanced_filter_engine.py`: Complex multi-criteria filtering
+Managers especializados que gestionan funcionalidades específicas:
 
-### Database Layer (`src/database/`)
-The application uses SQLite for persistence:
+- `config_manager.py`: Persistencia de configuración vía SQLite
+- `clipboard_manager.py`: Operaciones de portapapeles usando pyperclip
+- `hotkey_manager.py`: Manejo de hotkeys globales con pynput
+- `tray_manager.py`: Integración con bandeja del sistema (system tray)
+- `search_engine.py`: Búsqueda en tiempo real con debouncing (300ms)
+- `state_manager.py`: Gestión del estado de la aplicación
+- `auth_manager.py`: Autenticación de usuarios con hash bcrypt
+- `session_manager.py`: Gestión de sesiones con expiración automática (24h)
+- `encryption_manager.py`: Cifrado Fernet para contenido sensible
+- `favorites_manager.py`: Seguimiento y gestión de favoritos
+- `usage_tracker.py`: Estadísticas y analytics de uso de items
+- `stats_manager.py`: Agregación de estadísticas para dashboard
+- `notification_manager.py`: Sistema de notificaciones in-app
+- `category_filter_engine.py`: Filtrado de categorías con caché LRU
+- `advanced_filter_engine.py`: Filtrado multi-criterio complejo
+- `tag_manager.py`: Gestión de tags y grupos de tags
+- `export_manager.py`: Exportación/importación de datos (JSON, CSV)
 
-- `db_manager.py`: Database operations with context managers for transactions
-- `migrations.py`: Database schema migrations
-- Database file: `widget_sidebar.db` (created automatically on first run)
+### Capa de Base de Datos (`src/database/`)
+La aplicación utiliza SQLite para persistencia:
 
-Schema includes: `settings`, `categories`, `items`, `clipboard_history`
+- `db_manager.py`: Operaciones de BD con context managers para transacciones
+- `migrations.py`: Migraciones de esquema de base de datos
+- Archivo de BD: `widget_sidebar.db` (se crea automáticamente en primera ejecución)
 
-**Important:** Database connection uses `check_same_thread=False` for PyQt6 compatibility. Always use the transaction context manager for write operations:
+Esquema incluye: `settings`, `categories`, `items`, `clipboard_history`, `tag_groups`, `item_tags`, `sessions`
+
+**Importante:** La conexión a BD usa `check_same_thread=False` para compatibilidad con PyQt6. Siempre usar el context manager de transacciones para operaciones de escritura:
 ```python
 with db.transaction() as conn:
     conn.execute(...)
 ```
 
-**Sensitive Item Encryption:** Items marked with `is_sensitive=True` have their `content` field automatically encrypted at the database layer using Fernet encryption. Encryption/decryption happens transparently in `DBManager.add_item()`, `DBManager.update_item()`, and `DBManager.get_items_by_category()`.
+**Cifrado de Items Sensibles:** Items marcados con `is_sensitive=True` tienen su campo `content` automáticamente cifrado en la capa de BD usando cifrado Fernet. El cifrado/descifrado ocurre transparentemente en `DBManager.add_item()`, `DBManager.update_item()`, y `DBManager.get_items_by_category()`.
 
-### Entry Point Flow
-1. `main.py` initializes logging and handles frozen/script execution paths
-2. Creates QApplication instance
-3. **Authentication flow:**
-   - `SessionManager` checks for valid session
-   - If first time: `FirstTimeWizard` for password creation
-   - If returning: `LoginDialog` for password entry
-   - On failure: exits application
-4. Creates `MainController` which initializes `ConfigManager` with SQLite
-5. `ConfigManager` loads categories/items from database (auto-decrypts sensitive items)
-6. `MainWindow` created with controller reference
-7. Hotkey manager and tray manager initialized
-8. Categories loaded into sidebar UI
+### Flujo de Punto de Entrada
+1. `main.py` inicializa logging y maneja rutas de ejecución frozen/script
+2. Crea instancia de QApplication
+3. **Flujo de autenticación:**
+   - `SessionManager` verifica sesión válida
+   - Si es primera vez: `FirstTimeWizard` para creación de contraseña
+   - Si es usuario recurrente: `LoginDialog` para ingreso de contraseña
+   - En fallo: sale de la aplicación
+4. Crea `MainController` que inicializa `ConfigManager` con SQLite
+5. `ConfigManager` carga categorías/items desde BD (auto-descifra items sensibles)
+6. `MainWindow` se crea con referencia al controller
+7. Se inicializan hotkey manager y tray manager
+8. Categorías se cargan en UI del sidebar
 
-### Window Architecture
-- **MainWindow**: Frameless, always-on-top sidebar (70px wide, 80% screen height)
-- **FloatingPanel**: Separate window for displaying category items, positioned adjacent to sidebar
-- **FavoritesFloatingPanel**: Dedicated panel for favorites view
-- **StatsFloatingPanel**: Statistics dashboard panel
-- **GlobalSearchPanel**: Full-screen search across all items
-- **SettingsWindow**: Modal dialog with 4 tabs (Categories, Appearance, Hotkeys, General)
-- **CategoryFilterWindow**: Category filtering interface
-- **AdvancedFiltersWindow**: Complex multi-criteria filtering UI
-- **FirstTimeWizard**: Password setup wizard for first run
-- **LoginDialog**: Authentication dialog on subsequent runs
+### Arquitectura de Ventanas
+- **MainWindow**: Sidebar frameless, always-on-top (70px ancho, 80% altura pantalla)
+- **FloatingPanel**: Ventana separada para mostrar items de categoría, posicionada adyacente al sidebar
+- **FavoritesFloatingPanel**: Panel dedicado para vista de favoritos
+- **StatsFloatingPanel**: Panel de dashboard estadístico
+- **GlobalSearchPanel**: Búsqueda en pantalla completa a través de todos los items
+- **SettingsWindow**: Diálogo modal con 4 pestañas (Categorías, Apariencia, Hotkeys, General)
+- **CategoryFilterWindow**: Interfaz de filtrado de categorías
+- **AdvancedFiltersWindow**: UI de filtrado multi-criterio complejo
+- **FirstTimeWizard**: Wizard de configuración de contraseña en primera ejecución
+- **LoginDialog**: Diálogo de autenticación en ejecuciones subsecuentes
+- **CategoryEditor**: Editor CRUD completo para categorías
+- **ItemEditor**: Editor CRUD completo para items con validación
+- **EmbeddedBrowserDialog**: Navegador embebido para captura de snippets desde web
+- **CreateItemsWithIADialog**: Wizard de creación masiva de items con IA
 
-### Signal/Slot Communication
-PyQt6 signals connect components:
-- `category_selected` (str): Emitted when category clicked in sidebar
-- `item_selected` (Item): Emitted when item clicked in content panel
-- `item_copied` (Item): Emitted after successful clipboard copy
+### Comunicación Signal/Slot
+Las señales PyQt6 conectan componentes:
+- `category_selected` (str): Emitida cuando se hace clic en categoría del sidebar
+- `item_selected` (Item): Emitida cuando se hace clic en item del content panel
+- `item_copied` (Item): Emitida después de copiar exitosamente al portapapeles
+- `filters_applied`: Emitida cuando se aplican filtros a categorías
+- `tag_group_selected`: Emitida cuando se selecciona un grupo de tags
 
-## Key Implementation Details
+## Detalles Clave de Implementación
 
-### Authentication & Security
-- **Password Protection**: First run shows `FirstTimeWizard` to set master password
-- **Session Management**: Sessions auto-expire (default 24h), stored in database
-- **Password Hashing**: Uses bcrypt via `AuthManager` for secure password storage
-- **Encryption**: Sensitive items encrypted with Fernet (symmetric encryption)
-  - Encryption key stored in `.env` file (auto-generated on first run)
-  - Key derivation: PBKDF2 from master password
-  - Encryption/decryption transparent at database layer
+### Autenticación y Seguridad
+- **Protección con Contraseña**: Primera ejecución muestra `FirstTimeWizard` para establecer contraseña maestra
+- **Gestión de Sesiones**: Las sesiones expiran automáticamente (24h por defecto), almacenadas en BD
+- **Hash de Contraseñas**: Usa bcrypt vía `AuthManager` para almacenamiento seguro
+- **Cifrado**: Items sensibles cifrados con Fernet (cifrado simétrico)
+  - Clave de cifrado almacenada en archivo `.env` (auto-generada en primera ejecución)
+  - Derivación de clave: PBKDF2 desde contraseña maestra
+  - Cifrado/descifrado transparente en capa de BD
 
-### Hotkey System
-- Global hotkey `Ctrl+Shift+V` toggles widget visibility from any application
-- Managed by `HotkeyManager` using pynput keyboard listener
-- Runs in background thread, communicates via PyQt6 signals
+### Sistema de Hotkeys
+- Hotkey global `Ctrl+Shift+V` alterna visibilidad del widget desde cualquier aplicación
+- Gestionado por `HotkeyManager` usando listener de teclado pynput
+- Ejecuta en thread de fondo, comunica vía señales PyQt6
 
-### System Tray
-- Minimizes to system tray instead of closing
-- Context menu: Show/Hide, Settings, Exit
-- Double-click tray icon to restore window
+### Bandeja del Sistema
+- Minimiza a system tray en lugar de cerrar
+- Menú contextual: Mostrar/Ocultar, Configuración, Salir
+- Doble clic en ícono del tray restaura la ventana
 
-### Search Functionality
-- Real-time filtering in `search_bar.py` with 300ms debounce
-- `search_engine.py` provides fuzzy matching across item names and content
-- Filters items within active category
+### Funcionalidad de Búsqueda
+- Filtrado en tiempo real en `search_bar.py` con debounce de 300ms
+- `search_engine.py` proporciona coincidencia fuzzy en nombres y contenido de items
+- Filtra items dentro de categoría activa
 
-### Favorites & Usage Tracking
-- Items can be marked as favorites (`is_favorite` field)
-- `usage_tracker.py` tracks item usage with metrics:
-  - Last used timestamp
-  - Usage count
-  - Usage patterns (time-based analytics)
-- `favorites_manager.py` provides favorites filtering and management
-- Stats available in `StatsFloatingPanel` and `StatsDashboard`
+### Favoritos y Tracking de Uso
+- Items pueden marcarse como favoritos (campo `is_favorite`)
+- `usage_tracker.py` rastrea uso de items con métricas:
+  - Timestamp de último uso
+  - Contador de uso
+  - Patrones de uso (analytics basados en tiempo)
+- `favorites_manager.py` proporciona filtrado y gestión de favoritos
+- Estadísticas disponibles en `StatsFloatingPanel` y `StatsDashboard`
 
-### Category Filtering
-- **Basic Filtering**: `CategoryFilterWindow` filters by active/pinned status
-- **Advanced Filtering**: `AdvancedFiltersWindow` supports:
-  - Text search (name, tags, content)
-  - Item count ranges
-  - Usage metrics (access count, date ranges)
-  - Multiple criteria with AND logic
-- **Filter Engine**: `CategoryFilterEngine` with LRU caching for performance
+### Filtrado de Categorías
+- **Filtrado Básico**: `CategoryFilterWindow` filtra por estado activo/fijado
+- **Filtrado Avanzado**: `AdvancedFiltersWindow` soporta:
+  - Búsqueda de texto (nombre, tags, contenido)
+  - Rangos de conteo de items
+  - Métricas de uso (conteo de accesos, rangos de fechas)
+  - Múltiples criterios con lógica AND
+- **Motor de Filtros**: `CategoryFilterEngine` con caché LRU para rendimiento
 
-### Global Search
-- `GlobalSearchPanel` searches across ALL items in ALL categories
-- Real-time filtering with debouncing
-- Shows category context for each result
-- Click result to copy content to clipboard
+### Búsqueda Global
+- `GlobalSearchPanel` busca a través de TODOS los items en TODAS las categorías
+- Filtrado en tiempo real con debouncing
+- Muestra contexto de categoría para cada resultado
+- Clic en resultado copia contenido al portapapeles
 
-### Configuration Persistence
-**Migration from JSON to SQLite:** The application originally used JSON files (`config.json`, `default_categories.json`). Now uses SQLite exclusively. The `build.bat` script includes migration step from JSON to database.
+### Sistema de Tags
+- **Tag Groups**: Grupos de tags para organización jerárquica
+- **Tag Association**: Items pueden tener múltiples tags
+- **Tag Filtering**: Filtrado rápido de categorías por tags
+- Base de datos: tablas `tag_groups` y `item_tags`
 
-### PyInstaller Build
-- Spec file: `widget_sidebar.spec`
-- Includes SQLite database, resources, and hidden imports for pynput
-- Console mode disabled (`console=False`)
-- UPX compression enabled
+### Persistencia de Configuración
+**Migración de JSON a SQLite:** La aplicación originalmente usaba archivos JSON (`config.json`, `default_categories.json`). Ahora usa SQLite exclusivamente. El script `build.bat` incluye paso de migración de JSON a BD.
 
-## Project Structure
+### Build con PyInstaller
+- Archivo spec: `widget_sidebar.spec`
+- Incluye base de datos SQLite, recursos, e imports ocultos para pynput
+- Modo consola deshabilitado (`console=False`)
+- Compresión UPX habilitada
+
+## Estructura del Proyecto
 ```
 widget_sidebar/
-├── main.py                      # Application entry point
-├── widget_sidebar.db            # SQLite database (auto-created)
-├── config.json                  # Legacy config (deprecated)
-├── default_categories.json      # Default categories seed data
-├── requirements.txt             # Python dependencies
-├── widget_sidebar.spec          # PyInstaller configuration
-├── build.bat                    # Build script for Windows exe
+├── main.py                      # Punto de entrada de la aplicación
+├── widget_sidebar.db            # Base de datos SQLite (auto-creada)
+├── config.json                  # Configuración legacy (deprecada)
+├── default_categories.json      # Datos semilla de categorías por defecto
+├── requirements.txt             # Dependencias Python
+├── widget_sidebar.spec          # Configuración PyInstaller
+├── build.bat                    # Script de build para exe de Windows
+├── .env                         # Variables de entorno (clave cifrado)
 └── src/
-    ├── models/                  # Data models (Category, Item, Config)
-    ├── views/                   # PyQt6 UI components
-    │   ├── main_window.py       # Main frameless window
-    │   ├── sidebar.py           # Category sidebar
-    │   ├── floating_panel.py    # Items display panel
-    │   ├── settings_window.py   # Settings dialog
-    │   └── widgets/             # Reusable UI widgets
-    ├── controllers/             # Business logic layer
-    ├── core/                    # Core functionality (config, clipboard, hotkeys, tray, search)
-    ├── database/                # SQLite database management
-    ├── utils/                   # Utilities (animations, validators, constants, logger)
-    └── resources/               # Static resources (if any)
+    ├── models/                  # Modelos de datos (Category, Item, Config, TagGroup)
+    ├── views/                   # Componentes UI PyQt6
+    │   ├── main_window.py       # Ventana principal frameless
+    │   ├── sidebar.py           # Sidebar de categorías
+    │   ├── floating_panel.py    # Panel de visualización de items
+    │   ├── settings_window.py   # Diálogo de configuración
+    │   ├── dialogs/             # Diálogos especializados (editors, wizards)
+    │   └── widgets/             # Widgets UI reutilizables
+    ├── controllers/             # Capa de lógica de negocio
+    ├── core/                    # Funcionalidad core (config, clipboard, hotkeys, tray, search)
+    ├── database/                # Gestión base de datos SQLite
+    ├── utils/                   # Utilidades (animations, validators, constants, logger)
+    └── resources/               # Recursos estáticos
 ```
 
-## Important Conventions
+## Convenciones Importantes
 
-### Path Handling
-The application supports both script and frozen (exe) execution:
+### Manejo de Rutas
+La aplicación soporta ejecución como script y frozen (exe):
 ```python
 if getattr(sys, 'frozen', False):
-    base_dir = Path(sys.executable).parent  # Running as exe
+    base_dir = Path(sys.executable).parent  # Ejecutando como exe
 else:
-    base_dir = Path(__file__).parent        # Running as script
+    base_dir = Path(__file__).parent        # Ejecutando como script
 ```
-Always use this pattern when referencing application files.
+Siempre usar este patrón al referenciar archivos de la aplicación.
 
-### Environment Variables
-- `.env` file stores encryption key (auto-generated)
-- Never commit `.env` to version control
-- `EncryptionManager` handles key generation and loading
+### Variables de Entorno
+- Archivo `.env` almacena clave de cifrado (auto-generada)
+- Nunca hacer commit de `.env` al control de versiones
+- `EncryptionManager` maneja generación y carga de claves
 
 ### Logging
-Comprehensive logging configured in `main.py`:
-- Log file: `widget_sidebar_error.log` (overwritten each session)
-- Log level: DEBUG
-- Global exception handler captures uncaught exceptions
-- Use `logger = logging.getLogger(__name__)` in each module
+Logging comprehensivo configurado en `main.py`:
+- Archivo log: `widget_sidebar_error.log` (sobrescrito cada sesión)
+- Nivel log: DEBUG
+- Manejador de excepciones global captura excepciones no atrapadas
+- Usar `logger = logging.getLogger(__name__)` en cada módulo
 
-### Window Positioning
-MainWindow positions at right edge of screen with 10% margins:
+### Posicionamiento de Ventanas
+MainWindow se posiciona en borde derecho de pantalla con márgenes 10%:
 ```python
 screen_height = screen.availableGeometry().height()
-window_height = int(screen_height * 0.8)  # 80% height
+window_height = int(screen_height * 0.8)  # 80% altura
 ```
 
-### Database Access
-- ConfigManager owns the DBManager instance
-- Always close database on application exit (handled in MainController.__del__)
-- Use transactions for data integrity
-- **Cache Invalidation**: Call `controller.invalidate_filter_cache()` after any database modifications to ensure filter cache coherency
+### Acceso a Base de Datos
+- ConfigManager posee la instancia de DBManager
+- Siempre cerrar BD al salir de aplicación (manejado en MainController.__del__)
+- Usar transacciones para integridad de datos
+- **Invalidación de Caché**: Llamar `controller.invalidate_filter_cache()` después de cualquier modificación en BD para asegurar coherencia de caché de filtros
 
-## Common Tasks
+## Tareas Comunes
 
-### Adding a New Category Programmatically
+### Agregar Nueva Categoría Programáticamente
 ```python
-# Via DBManager directly
+# Vía DBManager directamente
 category_id = db.add_category(
-    name='New Category',
+    name='Nueva Categoría',
     icon='🆕',
     is_predefined=False
 )
 ```
 
-### Adding Items to Category
+### Agregar Items a Categoría
 ```python
-# Regular item
+# Item regular
 item_id = db.add_item(
     category_id=category_id,
-    label='My Command',
+    label='Mi Comando',
     content='git status',
     item_type='CODE'
 )
 
-# Sensitive item (auto-encrypted)
+# Item sensible (auto-cifrado)
 item_id = db.add_item(
     category_id=category_id,
     label='API Key',
     content='sk-1234567890',
     item_type='TEXT',
-    is_sensitive=True  # Content will be encrypted
+    is_sensitive=True  # El contenido será cifrado
 )
 ```
 
-### Working with Encrypted Content
+### Trabajar con Contenido Cifrado
 ```python
-# Encryption happens automatically in DBManager
-# When adding/updating items:
-db.add_item(..., is_sensitive=True)  # Content encrypted before storage
+# El cifrado ocurre automáticamente en DBManager
+# Al agregar/actualizar items:
+db.add_item(..., is_sensitive=True)  # Contenido cifrado antes de almacenar
 
-# When retrieving items:
-items = db.get_items_by_category(cat_id)  # Content auto-decrypted if sensitive
+# Al recuperar items:
+items = db.get_items_by_category(cat_id)  # Contenido auto-descifrado si es sensible
 ```
 
-### Managing Sessions
+### Gestionar Sesiones
 ```python
 from core.session_manager import SessionManager
 
 session_mgr = SessionManager()
-# Check if session valid
+# Verificar si sesión es válida
 if session_mgr.validate_session():
-    print("Valid session")
+    print("Sesión válida")
 else:
-    # Show login dialog
+    # Mostrar diálogo de login
     pass
 ```
 
-### Modifying Global Hotkey
-Edit `src/core/hotkey_manager.py` and update the key combination in `setup_hotkeys()` method.
+### Trabajar con Tags
+```python
+# Crear grupo de tags
+tag_group_id = db.add_tag_group(
+    name='Lenguajes',
+    description='Tags de lenguajes de programación'
+)
 
-## Version History
+# Agregar tag a item
+db.add_tag_to_item(item_id, 'python')
+db.add_tag_to_item(item_id, 'async')
 
-- **3.0.0**: Settings window with full CRUD for categories/items, appearance customization, export/import
-- **2.0.0**: Global hotkeys, system tray, search functionality, SQLite migration
-- **1.0.0**: Initial release with sidebar, content panel, dark theme, animations
+# Obtener items por tag
+items = db.get_items_by_tag('python')
+```
+
+### Modificar Hotkey Global
+Editar `src/core/hotkey_manager.py` y actualizar la combinación de teclas en el método `setup_hotkeys()`.
+
+## Historial de Versiones
+
+- **3.0.0** (SQLite Edition):
+  - Migración completa a SQLite
+  - Ventana de configuración con CRUD completo para categorías/items
+  - Sistema de tags y grupos de tags
+  - Navegador embebido para captura de snippets
+  - Wizard de creación masiva con IA
+  - Personalización de apariencia
+  - Exportación/importación de datos
+  - Dashboard de estadísticas
+  - Filtrado avanzado multi-criterio
+
+- **2.0.0**:
+  - Hotkeys globales
+  - Integración system tray
+  - Funcionalidad de búsqueda
+  - Inicio de migración SQLite
+
+- **1.0.0**:
+  - Release inicial con sidebar
+  - Content panel
+  - Tema oscuro
+  - Animaciones

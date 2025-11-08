@@ -21,6 +21,7 @@ from views.hotkey_settings import HotkeySettings
 from views.general_settings import GeneralSettings
 from views.browser_settings import BrowserSettings
 from views.organization_settings import OrganizationSettings
+from views.files_settings import FilesSettings
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -131,6 +132,7 @@ class SettingsWindow(QDialog):
         self.hotkey_settings = HotkeySettings(config_manager=self.config_manager)
         self.browser_settings = BrowserSettings(controller=self.controller)
         self.organization_settings = OrganizationSettings(config_manager=self.config_manager)
+        self.files_settings = FilesSettings(config_manager=self.config_manager)
         self.general_settings = GeneralSettings(config_manager=self.config_manager)
 
         # Add tabs
@@ -139,6 +141,7 @@ class SettingsWindow(QDialog):
         self.tab_widget.addTab(self.hotkey_settings, "Hotkeys")
         self.tab_widget.addTab(self.browser_settings, "Navegador")
         self.tab_widget.addTab(self.organization_settings, "Organización")
+        self.tab_widget.addTab(self.files_settings, "Archivos")
         self.tab_widget.addTab(self.general_settings, "General")
 
         main_layout.addWidget(self.tab_widget)

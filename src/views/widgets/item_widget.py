@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from models.item import Item, ItemType
 from core.usage_tracker import UsageTracker
 from core.favorites_manager import FavoritesManager
+from core.file_manager import FileManager
+from core.config_manager import ConfigManager
 from views.command_output_dialog import CommandOutputDialog
 from views.dialogs.item_details_dialog import ItemDetailsDialog
 import time
@@ -49,6 +51,41 @@ class ItemButton(QFrame):
 
         self.init_ui()
 
+    def _resolve_path(self, content_path: str) -> Path:
+        """
+        Resuelve una ruta, convirtiendo rutas relativas a absolutas si es necesario
+
+        Args:
+            content_path: Ruta desde item.content (puede ser relativa o absoluta)
+
+        Returns:
+            Path: Ruta absoluta resuelta
+        """
+        path = Path(content_path)
+
+        # Si la ruta es absoluta y existe, usarla directamente
+        if path.is_absolute():
+            return path
+
+        # Si es relativa, intentar construir ruta absoluta desde config
+        # Formato relativo: "IMAGENES/test.jpg" o "IMAGENES\test.jpg"
+        try:
+            # Intentar obtener FileManager para construir ruta absoluta
+            db_path = Path(__file__).parent.parent.parent.parent / "widget_sidebar.db"
+            config_manager = ConfigManager(str(db_path))
+            file_manager = FileManager(config_manager)
+
+            # Convertir ruta relativa a absoluta
+            absolute_path = file_manager.get_absolute_path(content_path)
+            config_manager.close()
+
+            return Path(absolute_path)
+
+        except Exception as e:
+            logger.warning(f"Could not resolve relative path '{content_path}': {e}")
+            # Fallback: asumir que es ruta absoluta
+            return path
+
     def init_ui(self):
         """Initialize button UI"""
         # Set frame properties
@@ -80,6 +117,46 @@ class ItemButton(QFrame):
         if tooltip_parts:
             tooltip_parts.append("\n")
         tooltip_parts.append(f"Tipo: {self.item.type.value.upper()}")
+
+        # Add file metadata if available (for PATH items with file info)
+        if (self.item.type == ItemType.PATH and
+            hasattr(self.item, 'file_hash') and self.item.file_hash):
+            tooltip_parts.append("\n\n📦 Archivo Guardado:")
+
+            # Original filename
+            if hasattr(self.item, 'original_filename') and self.item.original_filename:
+                tooltip_parts.append(f"\n📄 Nombre: {self.item.original_filename}")
+
+            # File size
+            if hasattr(self.item, 'file_size') and self.item.file_size:
+                # Use Item's get_formatted_file_size if available
+                if hasattr(self.item, 'get_formatted_file_size'):
+                    size_str = self.item.get_formatted_file_size()
+                else:
+                    # Fallback to simple formatting
+                    size = self.item.file_size
+                    if size < 1024:
+                        size_str = f"{size} B"
+                    elif size < 1024 * 1024:
+                        size_str = f"{size / 1024:.2f} KB"
+                    elif size < 1024 * 1024 * 1024:
+                        size_str = f"{size / (1024 * 1024):.2f} MB"
+                    else:
+                        size_str = f"{size / (1024 * 1024 * 1024):.2f} GB"
+                tooltip_parts.append(f"\n💾 Tamaño: {size_str}")
+
+            # File type with icon
+            if hasattr(self.item, 'file_type') and self.item.file_type:
+                # Get icon if method available
+                if hasattr(self.item, 'get_file_type_icon'):
+                    icon = self.item.get_file_type_icon()
+                    tooltip_parts.append(f"\n{icon} Tipo: {self.item.file_type}")
+                else:
+                    tooltip_parts.append(f"\n📎 Tipo: {self.item.file_type}")
+
+            # File extension
+            if hasattr(self.item, 'file_extension') and self.item.file_extension:
+                tooltip_parts.append(f"\n🔖 Extensión: {self.item.file_extension}")
 
         # Set the complete tooltip
         if tooltip_parts:
@@ -140,7 +217,7 @@ class ItemButton(QFrame):
             """)
             label_row.addWidget(category_badge)
 
-        # Badge (Popular / Nuevo)
+        # Badge (Popular / Nuevo / Archivo Guardado)
         badge = self.get_badge()
         if badge:
             badge_label = QLabel(badge)
@@ -153,6 +230,21 @@ class ItemButton(QFrame):
                 }
             """)
             label_row.addWidget(badge_label)
+
+        # File badge (for PATH items with saved files)
+        if (self.item.type == ItemType.PATH and
+            hasattr(self.item, 'file_hash') and self.item.file_hash):
+            file_badge = QLabel("📦")
+            file_badge.setStyleSheet("""
+                QLabel {
+                    background-color: transparent;
+                    color: #4CAF50;
+                    font-size: 14pt;
+                    padding: 0px;
+                }
+            """)
+            file_badge.setToolTip("Archivo guardado en almacenamiento organizado")
+            label_row.addWidget(file_badge)
 
         label_row.addStretch()
         left_layout.addLayout(label_row)
@@ -341,7 +433,8 @@ class ItemButton(QFrame):
             path_buttons_layout.addWidget(self.open_explorer_button)
 
             # Open file button (only if it's a file, not a directory)
-            path = Path(self.item.content)
+            # Resolver ruta (relativa -> absoluta si es necesario)
+            path = self._resolve_path(self.item.content)
             if path.exists() and path.is_file():
                 self.open_file_button = QPushButton("📝")
                 self.open_file_button.setFixedSize(35, 35)
@@ -367,7 +460,7 @@ class ItemButton(QFrame):
 
             main_layout.addLayout(path_buttons_layout)
 
-        # Set initial style (different for sensitive items)
+        # Set initial style (different for sensitive items and file items)
         if hasattr(self.item, 'is_sensitive') and self.item.is_sensitive:
             self.setStyleSheet("""
                 QFrame {
@@ -378,6 +471,25 @@ class ItemButton(QFrame):
                 }
                 QFrame:hover {
                     background-color: #4d2525;
+                }
+                QLabel {
+                    color: #cccccc;
+                    background-color: transparent;
+                    border: none;
+                }
+            """)
+        elif (self.item.type == ItemType.PATH and
+              hasattr(self.item, 'file_hash') and self.item.file_hash):
+            # Special style for PATH items with saved files
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #2d2d2d;
+                    border: none;
+                    border-left: 3px solid #4CAF50;
+                    border-bottom: 1px solid #1e1e1e;
+                }
+                QFrame:hover {
+                    background-color: #3d3d3d;
                 }
                 QLabel {
                     color: #cccccc;
@@ -480,7 +592,8 @@ class ItemButton(QFrame):
             error_msg = None
 
             try:
-                path = Path(self.item.content)
+                # Resolver ruta (relativa -> absoluta si es necesario)
+                path = self._resolve_path(self.item.content)
                 system = platform.system()
 
                 if system == 'Windows':
@@ -538,10 +651,11 @@ class ItemButton(QFrame):
     def open_file(self):
         """Open file with default application"""
         if self.item.type == ItemType.PATH:
-            path = Path(self.item.content)
+            # Resolver ruta (relativa -> absoluta si es necesario)
+            path = self._resolve_path(self.item.content)
 
             if not path.exists() or not path.is_file():
-                print(f"File not found: {path}")
+                logger.warning(f"File not found: {path}")
                 return
 
             try:
@@ -632,6 +746,25 @@ class ItemButton(QFrame):
                     border: none;
                 }
             """)
+        elif (self.item.type == ItemType.PATH and
+              hasattr(self.item, 'file_hash') and self.item.file_hash):
+            # Special style for PATH items with saved files
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #2d2d2d;
+                    border: none;
+                    border-left: 3px solid #4CAF50;
+                    border-bottom: 1px solid #1e1e1e;
+                }
+                QFrame:hover {
+                    background-color: #3d3d3d;
+                }
+                QLabel {
+                    color: #cccccc;
+                    background-color: transparent;
+                    border: none;
+                }
+            """)
         else:
             self.setStyleSheet("""
                 QFrame {
@@ -651,17 +784,24 @@ class ItemButton(QFrame):
 
     def get_display_label(self):
         """Get display label (ofuscado si es sensible y no revelado)"""
+        # Get file type icon if this is a PATH item with file metadata
+        file_icon = ""
+        if (self.item.type == ItemType.PATH and
+            hasattr(self.item, 'file_hash') and self.item.file_hash and
+            hasattr(self.item, 'get_file_type_icon')):
+            file_icon = self.item.get_file_type_icon() + " "
+
         if hasattr(self.item, 'is_sensitive') and self.item.is_sensitive and not self.is_revealed:
             # Ofuscar: mostrar label + (********)
             content_preview = "********"
-            return f"{self.item.label} ({content_preview})"
+            return f"{file_icon}{self.item.label} ({content_preview})"
         elif hasattr(self.item, 'is_sensitive') and self.item.is_sensitive and self.is_revealed:
             # Revelado: mostrar label + preview del contenido
             content = self.item.content[:30] if len(self.item.content) > 30 else self.item.content
-            return f"{self.item.label} ({content}...)" if len(self.item.content) > 30 else f"{self.item.label} ({content})"
+            return f"{file_icon}{self.item.label} ({content}...)" if len(self.item.content) > 30 else f"{file_icon}{self.item.label} ({content})"
         else:
-            # Item normal: solo el label
-            return self.item.label
+            # Item normal: solo el label (con icono de archivo si aplica)
+            return f"{file_icon}{self.item.label}"
 
     def toggle_reveal(self):
         """Toggle reveal/hide sensitive content"""

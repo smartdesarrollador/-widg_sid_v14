@@ -35,7 +35,13 @@ class Item:
         # Nuevos campos para listas avanzadas
         is_list: bool = False,
         list_group: Optional[str] = None,
-        orden_lista: int = 0
+        orden_lista: int = 0,
+        # Campos de metadatos de archivos (TYPE PATH)
+        file_size: Optional[int] = None,
+        file_type: Optional[str] = None,
+        file_extension: Optional[str] = None,
+        original_filename: Optional[str] = None,
+        file_hash: Optional[str] = None
     ):
         self.id = item_id
         self.label = label
@@ -54,6 +60,12 @@ class Item:
         self.is_list = is_list  # Indica si este item es parte de una lista
         self.list_group = list_group  # Nombre/identificador del grupo de lista
         self.orden_lista = orden_lista  # Posición del item dentro de la lista
+        # Campos de metadatos de archivos
+        self.file_size = file_size  # Tamaño del archivo en bytes
+        self.file_type = file_type  # Tipo de archivo (IMAGEN, VIDEO, PDF, etc.)
+        self.file_extension = file_extension  # Extensión con punto (.jpg, .mp4)
+        self.original_filename = original_filename  # Nombre original del archivo
+        self.file_hash = file_hash  # Hash SHA256 para detección de duplicados
         self.created_at = datetime.now()
         self.last_used = datetime.now()
 
@@ -90,7 +102,13 @@ class Item:
             # Campos de listas avanzadas
             "is_list": self.is_list,
             "list_group": self.list_group,
-            "orden_lista": self.orden_lista
+            "orden_lista": self.orden_lista,
+            # Campos de metadatos de archivos
+            "file_size": self.file_size,
+            "file_type": self.file_type,
+            "file_extension": self.file_extension,
+            "original_filename": self.original_filename,
+            "file_hash": self.file_hash
         }
 
     @classmethod
@@ -119,7 +137,13 @@ class Item:
             # Campos de listas avanzadas
             is_list=data.get("is_list", False),
             list_group=data.get("list_group"),
-            orden_lista=data.get("orden_lista", 0)
+            orden_lista=data.get("orden_lista", 0),
+            # Campos de metadatos de archivos
+            file_size=data.get("file_size"),
+            file_type=data.get("file_type"),
+            file_extension=data.get("file_extension"),
+            original_filename=data.get("original_filename"),
+            file_hash=data.get("file_hash")
         )
 
     # Estado y visibilidad
@@ -177,6 +201,63 @@ class Item:
         self.is_list = False
         self.list_group = None
         self.orden_lista = 0
+
+    # Métodos para archivos (TYPE PATH)
+    def get_formatted_file_size(self) -> str:
+        """
+        Retorna el tamaño del archivo formateado de forma legible
+
+        Returns:
+            str: Tamaño formateado (ej: "2.5 MB", "1.2 GB") o vacío si no hay file_size
+        """
+        if not self.file_size:
+            return ""
+
+        size = float(self.file_size)
+        units = ['B', 'KB', 'MB', 'GB', 'TB']
+        unit_index = 0
+
+        while size >= 1024.0 and unit_index < len(units) - 1:
+            size /= 1024.0
+            unit_index += 1
+
+        # Formatear con decimales apropiados
+        if unit_index == 0:  # Bytes
+            return f"{int(size)} {units[unit_index]}"
+        else:
+            return f"{size:.2f} {units[unit_index]}"
+
+    def get_file_type_icon(self) -> str:
+        """
+        Retorna el emoji correspondiente al tipo de archivo
+
+        Returns:
+            str: Emoji representativo del tipo de archivo
+        """
+        # Diccionario de iconos por tipo
+        icons = {
+            'IMAGEN': '🖼️',
+            'VIDEO': '🎬',
+            'PDF': '📕',
+            'WORD': '📘',
+            'EXCEL': '📊',
+            'TEXT': '📄',
+            'OTROS': '📎'
+        }
+
+        if not self.file_type:
+            return '📎'  # Icono por defecto
+
+        return icons.get(self.file_type.upper(), '📎')
+
+    def is_file_item(self) -> bool:
+        """
+        Verifica si este item es un archivo (TYPE PATH con metadatos)
+
+        Returns:
+            bool: True si es un item de archivo con metadatos
+        """
+        return self.type == ItemType.PATH and self.file_hash is not None
 
     def __repr__(self) -> str:
         list_info = f", list={self.list_group}[{self.orden_lista}]" if self.is_list_item() else ""

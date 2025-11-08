@@ -580,6 +580,46 @@ class DBManager:
             return item
         return None
 
+    def get_item_by_hash(self, file_hash: str) -> Optional[Dict]:
+        """
+        Get item by file hash (for duplicate detection)
+
+        Args:
+            file_hash: SHA256 hash of the file
+
+        Returns:
+            Optional[Dict]: Item dictionary or None if not found
+        """
+        query = "SELECT * FROM items WHERE file_hash = ? LIMIT 1"
+        result = self.execute_query(query, (file_hash,))
+        if result:
+            item = result[0]
+            # Parse tags
+            if item['tags']:
+                try:
+                    item['tags'] = json.loads(item['tags'])
+                except json.JSONDecodeError:
+                    if isinstance(item['tags'], str):
+                        item['tags'] = [tag.strip() for tag in item['tags'].split(',') if tag.strip()]
+                    else:
+                        item['tags'] = []
+            else:
+                item['tags'] = []
+
+            # Decrypt sensitive content if needed
+            if item.get('is_sensitive') and item.get('content'):
+                from core.encryption_manager import EncryptionManager
+                encryption_manager = EncryptionManager()
+                try:
+                    item['content'] = encryption_manager.decrypt(item['content'])
+                    logger.debug(f"Content decrypted for item with hash: {file_hash[:16]}...")
+                except Exception as e:
+                    logger.error(f"Failed to decrypt item with hash {file_hash[:16]}: {e}")
+                    item['content'] = "[DECRYPTION ERROR]"
+
+            return item
+        return None
+
     def get_all_items(self, active_only: bool = False, include_archived: bool = True) -> List[Dict]:
         """
         Get all items from all categories
@@ -655,7 +695,13 @@ class DBManager:
                  badge: str = None,
                  is_active: bool = True, is_archived: bool = False,
                  is_list: bool = False, list_group: str = None,
-                 orden_lista: int = 0) -> int:
+                 orden_lista: int = 0,
+                 # File metadata fields (for TYPE PATH)
+                 file_size: int = None,
+                 file_type: str = None,
+                 file_extension: str = None,
+                 original_filename: str = None,
+                 file_hash: str = None) -> int:
         """
         Add new item to category
 
@@ -677,6 +723,11 @@ class DBManager:
             is_list: Whether item is part of a list (default False)
             list_group: Name/identifier of the list group (optional)
             orden_lista: Position of item within the list (default 0)
+            file_size: File size in bytes (for PATH items, optional)
+            file_type: File type category (IMAGEN, VIDEO, PDF, etc., optional)
+            file_extension: File extension with dot (.jpg, .mp4, optional)
+            original_filename: Original filename (optional)
+            file_hash: SHA256 hash for duplicate detection (optional)
 
         Returns:
             int: New item ID
@@ -691,12 +742,12 @@ class DBManager:
         tags_json = json.dumps(tags or [])
         query = """
             INSERT INTO items
-            (category_id, label, content, type, icon, is_sensitive, is_favorite, tags, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            (category_id, label, content, type, icon, is_sensitive, is_favorite, tags, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, file_size, file_type, file_extension, original_filename, file_hash, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """
         item_id = self.execute_update(
             query,
-            (category_id, label, content, item_type, icon, is_sensitive, is_favorite, tags_json, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista)
+            (category_id, label, content, item_type, icon, is_sensitive, is_favorite, tags_json, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, file_size, file_type, file_extension, original_filename, file_hash)
         )
         list_info = f", List: {list_group}[{orden_lista}]" if is_list else ""
         logger.info(f"Item added: {label} (ID: {item_id}, Sensitive: {is_sensitive}, Favorite: {is_favorite}, Active: {is_active}, Archived: {is_archived}{list_info})")
@@ -708,9 +759,9 @@ class DBManager:
 
         Args:
             item_id: Item ID to update
-            **kwargs: Fields to update (label, content, type, icon, is_sensitive, is_favorite, tags, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista)
+            **kwargs: Fields to update (label, content, type, icon, is_sensitive, is_favorite, tags, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, file_size, file_type, file_extension, original_filename, file_hash)
         """
-        allowed_fields = ['label', 'content', 'type', 'icon', 'is_sensitive', 'is_favorite', 'tags', 'description', 'working_dir', 'color', 'badge', 'is_active', 'is_archived', 'is_list', 'list_group', 'orden_lista']
+        allowed_fields = ['label', 'content', 'type', 'icon', 'is_sensitive', 'is_favorite', 'tags', 'description', 'working_dir', 'color', 'badge', 'is_active', 'is_archived', 'is_list', 'list_group', 'orden_lista', 'file_size', 'file_type', 'file_extension', 'original_filename', 'file_hash']
         updates = []
         params = []
 
