@@ -203,6 +203,43 @@ class MainController:
         if hasattr(self.config_manager, '_categories_cache'):
             self.config_manager._categories_cache = None
 
+    def refresh_ui(self) -> None:
+        """
+        Recarga todos los datos desde la base de datos y actualiza la UI completa
+        Este método debe ser llamado cuando se crean/editan/eliminan items o categorías
+        """
+        logger.info("Refrescando UI completa...")
+
+        # Invalidar cachés
+        self.invalidate_filter_cache()
+
+        # Recargar categorías desde la base de datos
+        logger.debug("Recargando categorías desde la base de datos")
+        self._all_categories = self.config_manager.load_default_categories()
+
+        # Si hay filtros activos, re-aplicarlos
+        if self._filters_active:
+            # Mantener los filtros activos actuales
+            self.categories = self._filtered_categories
+        else:
+            # Sin filtros, usar todas las categorías
+            self.categories = self._all_categories
+
+        # Actualizar el sidebar si main_window está disponible
+        if self.main_window:
+            logger.debug("Actualizando sidebar en MainWindow")
+            self.main_window.load_categories(self.categories)
+
+            # Si hay un FloatingPanel abierto, actualizarlo también
+            if hasattr(self.main_window, 'floating_panel') and self.main_window.floating_panel:
+                logger.debug("Actualizando FloatingPanel")
+                # Recargar items de la categoría actual
+                if self.current_category:
+                    items = self.config_manager.get_items_by_category(self.current_category.id)
+                    self.main_window.floating_panel.load_items(items, self.current_category)
+
+        logger.info(f"UI refrescada. Total de categorías: {len(self.categories)}")
+
     def toggle_browser(self):
         """Toggle browser window visibility"""
         try:

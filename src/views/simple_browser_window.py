@@ -1933,6 +1933,10 @@ class SimpleBrowserWindow(QWidget):
                     parent=self
                 )
 
+                # Conectar señales para actualizar UI automáticamente
+                if self.controller and hasattr(self.controller, 'refresh_ui'):
+                    dialog.item_created.connect(lambda cat_id: self.controller.refresh_ui())
+
                 # Asegurar que el dialog tenga file_manager y db_manager
                 if not hasattr(dialog, 'file_manager') or dialog.file_manager is None:
                     from core.config_manager import ConfigManager

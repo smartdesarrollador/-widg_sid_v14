@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QComboBox, QPushButton, QFormLayout, QMessageBox, QCheckBox,
     QFrame, QScrollArea, QFileDialog, QGroupBox
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import sys
 from pathlib import Path
@@ -102,6 +102,10 @@ class ItemEditorDialog(QDialog):
     Dialog for creating or editing items
     Modal dialog with form fields for item properties
     """
+
+    # Señales para notificar cambios en items
+    item_created = pyqtSignal(str)  # Emite category_id del item creado
+    item_updated = pyqtSignal(str, str)  # Emite (item_id, category_id)
 
     def __init__(self, item=None, category_id=None, controller=None, parent=None):
         """
@@ -961,6 +965,10 @@ class ItemEditorDialog(QDialog):
                 # Invalidate filter cache
                 if hasattr(self.controller, 'invalidate_filter_cache'):
                     self.controller.invalidate_filter_cache()
+
+                # Emitir señal de item actualizado
+                self.item_updated.emit(self.item.id, self.item.category_id)
+
                 self.accept()
 
             else:
@@ -1008,6 +1016,10 @@ class ItemEditorDialog(QDialog):
                     # Invalidate filter cache
                     if hasattr(self.controller, 'invalidate_filter_cache'):
                         self.controller.invalidate_filter_cache()
+
+                    # Emitir señal de item creado
+                    self.item_created.emit(self.category_id)
+
                     self.accept()
                 else:
                     logger.error(f"[ItemEditorDialog] Failed to add item")

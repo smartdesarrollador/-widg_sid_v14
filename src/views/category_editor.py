@@ -497,6 +497,10 @@ class CategoryEditor(QWidget):
             parent=self
         )
 
+        # Conectar señales para actualizar UI automáticamente
+        if self.controller and hasattr(self.controller, 'refresh_ui'):
+            dialog.item_created.connect(lambda cat_id: self.controller.refresh_ui())
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # Item was saved successfully in the dialog
             # Save the current category ID before reloading
@@ -629,6 +633,10 @@ class CategoryEditor(QWidget):
             controller=self.controller,
             parent=self
         )
+
+        # Conectar señales para actualizar UI automáticamente
+        if self.controller and hasattr(self.controller, 'refresh_ui'):
+            dialog.item_updated.connect(lambda item_id, cat_id: self.controller.refresh_ui())
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # Item was updated successfully in the dialog

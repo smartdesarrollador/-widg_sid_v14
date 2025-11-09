@@ -48,6 +48,9 @@ class Sidebar(QWidget):
     # Signal emitted when AI Bulk button is clicked
     ai_bulk_clicked = pyqtSignal()
 
+    # Signal emitted when refresh button is clicked
+    refresh_clicked = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.category_buttons = {}
@@ -92,6 +95,40 @@ class Sidebar(QWidget):
         """)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
+
+        # Refresh button (🔄) - Recargar datos
+        self.refresh_button = QPushButton("🔄")
+        self.refresh_button.setFixedSize(70, 35)
+        self.refresh_button.setToolTip("Refrescar categorías e items")
+        self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.refresh_button.setStyleSheet(f"""
+            QPushButton {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self.theme.get_color('secondary')},
+                    stop:1 {self.theme.get_color('primary')}
+                );
+                color: {self.theme.get_color('text_primary')};
+                border: none;
+                border-bottom: 2px solid {self.theme.get_color('background_deep')};
+                font-size: 12pt;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self.theme.get_color('accent')},
+                    stop:1 {self.theme.get_color('secondary')}
+                );
+                border-bottom: 2px solid {self.theme.get_color('accent')};
+            }}
+            QPushButton:pressed {{
+                background-color: {self.theme.get_color('surface')};
+                transform: scale(0.95);
+            }}
+        """)
+        self.refresh_button.clicked.connect(self.on_refresh_clicked)
+        main_layout.addWidget(self.refresh_button)
 
         # Scroll up button
         self.scroll_up_button = QPushButton("▲")
@@ -595,6 +632,10 @@ class Sidebar(QWidget):
     def on_dashboard_clicked(self):
         """Handle dashboard button click"""
         self.dashboard_clicked.emit()
+
+    def on_refresh_clicked(self):
+        """Handle refresh button click"""
+        self.refresh_clicked.emit()
 
     def set_controller(self, controller):
         """Set the main controller reference"""

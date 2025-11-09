@@ -192,6 +192,7 @@ class MainWindow(QMainWindow):
         self.sidebar.dashboard_clicked.connect(self.open_structure_dashboard)
         self.sidebar.settings_clicked.connect(self.open_settings)
         self.sidebar.category_filter_clicked.connect(self.on_category_filter_clicked)
+        self.sidebar.refresh_clicked.connect(self.on_refresh_clicked)
         main_layout.addWidget(self.sidebar)
 
     def load_categories(self, categories):
@@ -469,6 +470,26 @@ class MainWindow(QMainWindow):
                 self,
                 "Error",
                 f"Error al mostrar favoritos:\n{str(e)}"
+            )
+
+    def on_refresh_clicked(self):
+        """Handle refresh button click - reload all categories and items from database"""
+        try:
+            logger.info("Refresh button clicked - reloading all data from database")
+
+            # Llamar al método refresh_ui del controller
+            if self.controller and hasattr(self.controller, 'refresh_ui'):
+                self.controller.refresh_ui()
+                logger.info("UI refreshed successfully")
+            else:
+                logger.warning("Controller not available or refresh_ui method not found")
+
+        except Exception as e:
+            logger.error(f"Error in on_refresh_clicked: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error al refrescar la UI:\n{str(e)}"
             )
 
     def on_favorites_panel_closed(self):
