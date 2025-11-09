@@ -24,6 +24,8 @@ class BulkItemDefaults:
     tags: str = ''
     is_favorite: int = 0
     is_sensitive: int = 0
+    is_list: int = 0
+    list_group: Optional[str] = None
     icon: Optional[str] = None
     color: Optional[str] = None
     description: Optional[str] = None
@@ -46,6 +48,9 @@ class BulkItemData:
         color: Color en formato hex (#RRGGBB)
         is_favorite: 1 si es favorito, 0 si no
         is_sensitive: 1 si debe encriptarse, 0 si no
+        is_list: 1 si pertenece a una lista secuencial, 0 si no
+        list_group: Nombre del grupo de lista (requerido si is_list=1)
+        orden_lista: Orden del item en la lista (opcional, se auto-asigna)
         working_dir: Directorio de trabajo para comandos CODE
         badge: Badge opcional para el item
         selected: Flag para UI de previsualización (default True)
@@ -59,6 +64,9 @@ class BulkItemData:
     color: Optional[str] = None
     is_favorite: int = 0
     is_sensitive: int = 0
+    is_list: int = 0
+    list_group: Optional[str] = None
+    orden_lista: Optional[int] = None
     working_dir: Optional[str] = None
     badge: Optional[str] = None
 
@@ -88,6 +96,12 @@ class BulkItemData:
             self.is_favorite = defaults.is_favorite
         if self.is_sensitive == 0 and defaults.is_sensitive:
             self.is_sensitive = defaults.is_sensitive
+        if self.is_list == 0 and defaults.is_list:
+            self.is_list = defaults.is_list
+
+        # List group: merge solo si is_list=1 y está vacío
+        if not self.list_group and defaults.list_group:
+            self.list_group = defaults.list_group
 
         # Opcionales: merge solo si están vacíos
         if not self.icon and defaults.icon:

@@ -27,7 +27,7 @@ class PromptTemplate:
     "type": "{item_type}",
     "tags": "{tags}",
     "is_favorite": {is_favorite},
-    "is_sensitive": {is_sensitive}{optional_defaults}
+    "is_sensitive": {is_sensitive}{list_defaults}{optional_defaults}
   }},
   "items": [
     {{
@@ -50,7 +50,7 @@ CONTEXTO DE LA TAREA:
 📝 Tipo de items: {item_type} ({item_type_desc})
 🏷️ Tags por defecto: {tags_display}
 ⭐ Favoritos por defecto: {is_favorite_text}
-🔒 Sensibles por defecto: {is_sensitive_text}
+🔒 Sensibles por defecto: {is_sensitive_text}{list_context}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -64,7 +64,7 @@ REGLAS IMPORTANTES:
 2. PERSONALIZACIÓN POR ITEM:
    - Puedes sobreescribir "type", "tags", "is_favorite", "is_sensitive" en items individuales
    - Ejemplo: si un item específico necesita ser CODE aunque el default sea TEXT
-   - Los valores individuales tienen prioridad sobre "defaults"
+   - Los valores individuales tienen prioridad sobre "defaults"{list_rules}
 
 3. CANTIDAD:
    - Genera entre 1 y 50 items según la complejidad del contexto
@@ -164,6 +164,8 @@ Responde solo con el JSON, sin explicaciones.
         tags = config.get('tags', '')
         is_favorite = config.get('is_favorite', 0)
         is_sensitive = config.get('is_sensitive', 0)
+        is_list = config.get('is_list', 0)
+        list_group = config.get('list_group', '')
         user_context = config.get('user_context', 'No especificado')
 
         # Descripción del tipo
@@ -179,6 +181,19 @@ Responde solo con el JSON, sin explicaciones.
             if is_sensitive
             else 'NO'
         )
+
+        # Configurar secciones de lista
+        list_defaults = ''
+        list_context = ''
+        list_rules = ''
+
+        if is_list == 1:
+            list_defaults = f',\n    "is_list": 1,\n    "list_group": "{list_group}"'
+            list_context = f'\n📝 Lista secuencial: SÍ - Grupo "{list_group}" (los items se crearán en orden)'
+            list_rules = """
+   - IMPORTANTE: Como se creará una lista, NO necesitas incluir "is_list" ni "list_group" en cada item
+   - El sistema asignará automáticamente el orden secuencial (orden_lista: 1, 2, 3, ...)
+   - Los items se ejecutarán/mostrarán en el orden en que aparezcan en el array"""
 
         # Agregar defaults opcionales si existen
         optional_defaults_parts = []
@@ -206,6 +221,9 @@ Responde solo con el JSON, sin explicaciones.
             is_sensitive=is_sensitive,
             is_favorite_text=is_favorite_text,
             is_sensitive_text=is_sensitive_text,
+            list_defaults=list_defaults,
+            list_context=list_context,
+            list_rules=list_rules,
             user_context=user_context,
             optional_defaults=optional_defaults
         )
@@ -297,6 +315,11 @@ Responde solo con el JSON, sin explicaciones.
             },
             "items": example_items
         }
+
+        # Agregar campos de lista si is_list=1
+        if config.get('is_list', 0) == 1:
+            example["defaults"]["is_list"] = 1
+            example["defaults"]["list_group"] = config.get('list_group', '')
 
         import json
         return json.dumps(example, indent=2, ensure_ascii=False)

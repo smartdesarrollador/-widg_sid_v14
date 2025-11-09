@@ -52,6 +52,8 @@ class BulkJSONValidator:
                     "tags": {"type": "string"},
                     "is_favorite": {"type": "integer", "enum": [0, 1]},
                     "is_sensitive": {"type": "integer", "enum": [0, 1]},
+                    "is_list": {"type": "integer", "enum": [0, 1]},
+                    "list_group": {"type": "string"},
                     "icon": {"type": "string"},
                     "color": {
                         "type": "string",
@@ -93,6 +95,9 @@ class BulkJSONValidator:
                         },
                         "is_favorite": {"type": "integer", "enum": [0, 1]},
                         "is_sensitive": {"type": "integer", "enum": [0, 1]},
+                        "is_list": {"type": "integer", "enum": [0, 1]},
+                        "list_group": {"type": "string"},
+                        "orden_lista": {"type": "integer", "minimum": 0},
                         "working_dir": {"type": "string"},
                         "badge": {"type": "string"}
                     },
@@ -246,6 +251,9 @@ class BulkJSONValidator:
                     color=item_dict.get('color'),
                     is_favorite=item_dict.get('is_favorite', 0),
                     is_sensitive=item_dict.get('is_sensitive', 0),
+                    is_list=item_dict.get('is_list', 0),
+                    list_group=item_dict.get('list_group'),
+                    orden_lista=item_dict.get('orden_lista'),
                     working_dir=item_dict.get('working_dir'),
                     badge=item_dict.get('badge')
                 )

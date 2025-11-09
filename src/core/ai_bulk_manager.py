@@ -71,6 +71,8 @@ class AIBulkItemManager:
             'tags': config.defaults.tags,
             'is_favorite': config.defaults.is_favorite,
             'is_sensitive': config.defaults.is_sensitive,
+            'is_list': config.defaults.is_list,
+            'list_group': config.defaults.list_group,
             'user_context': config.user_context,
             'icon': config.defaults.icon,
             'color': config.defaults.color,
@@ -102,7 +104,9 @@ class AIBulkItemManager:
             'item_type': config.defaults.type,
             'tags': config.defaults.tags,
             'is_favorite': config.defaults.is_favorite,
-            'is_sensitive': config.defaults.is_sensitive
+            'is_sensitive': config.defaults.is_sensitive,
+            'is_list': config.defaults.is_list,
+            'list_group': config.defaults.list_group
         }
 
         return PromptTemplate.generate_example_json(config_dict)
@@ -169,6 +173,8 @@ class AIBulkItemManager:
             tags=defaults_dict.get('tags', ''),
             is_favorite=defaults_dict.get('is_favorite', 0),
             is_sensitive=defaults_dict.get('is_sensitive', 0),
+            is_list=defaults_dict.get('is_list', 0),
+            list_group=defaults_dict.get('list_group'),
             icon=defaults_dict.get('icon'),
             color=defaults_dict.get('color'),
             description=defaults_dict.get('description'),
@@ -189,6 +195,9 @@ class AIBulkItemManager:
                 color=item_dict.get('color'),
                 is_favorite=item_dict.get('is_favorite', 0),
                 is_sensitive=item_dict.get('is_sensitive', 0),
+                is_list=item_dict.get('is_list', 0),
+                list_group=item_dict.get('list_group'),
+                orden_lista=item_dict.get('orden_lista'),
                 working_dir=item_dict.get('working_dir'),
                 badge=item_dict.get('badge')
             )
@@ -201,7 +210,8 @@ class AIBulkItemManager:
 
         logger.info(
             f"Parsed {len(items)} items for category {category_id} "
-            f"with defaults: type={defaults.type}, tags='{defaults.tags}'"
+            f"with defaults: type={defaults.type}, tags='{defaults.tags}', "
+            f"is_list={defaults.is_list}, list_group='{defaults.list_group}'"
         )
 
         return items, defaults, category_id
@@ -254,12 +264,21 @@ class AIBulkItemManager:
         # Inserción en transacción
         try:
             with self.db.transaction() as conn:
+                # Si los items son de lista, asignar orden secuencial (comenzando desde 1)
+                list_order_counter = 1
+
                 for item in selected_items:
                     try:
                         # Convertir tags de string a lista
                         # Ej: "clonar_proyecto" → ["clonar_proyecto"]
                         # Ej: "git,deploy,automation" → ["git", "deploy", "automation"]
                         tags_list = [tag.strip() for tag in item.tags.split(',') if tag.strip()] if item.tags else []
+
+                        # Asignar orden_lista secuencial si es lista
+                        orden_lista = None
+                        if item.is_list == 1:
+                            orden_lista = item.orden_lista if item.orden_lista is not None else list_order_counter
+                            list_order_counter += 1
 
                         # Crear item usando el método del DBManager
                         item_id = self.db.add_item(
@@ -273,6 +292,9 @@ class AIBulkItemManager:
                             color=item.color,
                             is_sensitive=item.is_sensitive,
                             is_favorite=item.is_favorite,
+                            is_list=item.is_list,
+                            list_group=item.list_group,
+                            orden_lista=orden_lista,
                             working_dir=item.working_dir,
                             badge=item.badge
                         )
@@ -281,7 +303,8 @@ class AIBulkItemManager:
 
                         logger.debug(
                             f"Created item {item_id}: '{item.label}' "
-                            f"(type: {item.type}, sensitive: {item.is_sensitive})"
+                            f"(type: {item.type}, sensitive: {item.is_sensitive}, "
+                            f"is_list: {item.is_list}, list_group: {item.list_group})"
                         )
 
                     except Exception as e:

@@ -218,7 +218,7 @@ class ConfigStep(QWidget):
             """)
             defaults_layout.addRow(tags_label, self.tags_selector)
 
-        # Checkboxes (favorito, sensible)
+        # Checkboxes (favorito, sensible, lista)
         checkbox_layout = QVBoxLayout()
         checkbox_layout.setSpacing(8)
 
@@ -251,7 +251,38 @@ class ConfigStep(QWidget):
         self.is_sensitive_check.setStyleSheet(self.is_favorite_check.styleSheet())
         checkbox_layout.addWidget(self.is_sensitive_check)
 
+        self.is_list_check = QCheckBox("Crear como lista secuencial")
+        self.is_list_check.setStyleSheet(self.is_favorite_check.styleSheet())
+        self.is_list_check.stateChanged.connect(self.on_list_check_changed)
+        checkbox_layout.addWidget(self.is_list_check)
+
         defaults_layout.addRow("Opciones:", checkbox_layout)
+
+        # Nombre de lista (oculto inicialmente)
+        list_name_label = QLabel("Nombre de lista:")
+        list_name_label.setStyleSheet("color: #ffffff; font-weight: normal;")
+        self.list_name_input = QLineEdit()
+        self.list_name_input.setPlaceholderText("Ej: Pasos para deploy, Setup inicial...")
+        self.list_name_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1px solid #3d3d3d;
+                border-radius: 3px;
+                padding: 8px;
+                font-size: 11pt;
+            }
+            QLineEdit:hover {
+                border-color: #00d4ff;
+            }
+            QLineEdit:focus {
+                border-color: #00d4ff;
+            }
+        """)
+        self.list_name_input.setVisible(False)
+        list_name_label.setVisible(False)
+        self.list_name_label = list_name_label  # Guardar referencia
+        defaults_layout.addRow(list_name_label, self.list_name_input)
 
         defaults_group.setLayout(defaults_layout)
         layout.addWidget(defaults_group)
@@ -356,6 +387,12 @@ class ConfigStep(QWidget):
         """Actualiza tips cuando cambia el tipo."""
         self.update_tips()
 
+    def on_list_check_changed(self, state):
+        """Muestra/oculta el campo de nombre de lista según el checkbox."""
+        is_checked = bool(state)
+        self.list_name_input.setVisible(is_checked)
+        self.list_name_label.setVisible(is_checked)
+
     def update_tips(self):
         """Actualiza tips según el tipo seleccionado."""
         item_type = self.type_combo.currentText()
@@ -408,7 +445,9 @@ class ConfigStep(QWidget):
             type=self.type_combo.currentText(),
             tags=tags,
             is_favorite=1 if self.is_favorite_check.isChecked() else 0,
-            is_sensitive=1 if self.is_sensitive_check.isChecked() else 0
+            is_sensitive=1 if self.is_sensitive_check.isChecked() else 0,
+            is_list=1 if self.is_list_check.isChecked() else 0,
+            list_group=self.list_name_input.text().strip() if self.is_list_check.isChecked() else None
         )
 
         # Crear config
@@ -460,6 +499,12 @@ class ConfigStep(QWidget):
         # Checkboxes
         self.is_favorite_check.setChecked(config.defaults.is_favorite == 1)
         self.is_sensitive_check.setChecked(config.defaults.is_sensitive == 1)
+
+        # Lista
+        if hasattr(config.defaults, 'is_list'):
+            self.is_list_check.setChecked(config.defaults.is_list == 1)
+            if config.defaults.is_list == 1 and hasattr(config.defaults, 'list_group'):
+                self.list_name_input.setText(config.defaults.list_group or "")
 
         # Contexto
         self.context_text.setPlainText(config.user_context)
