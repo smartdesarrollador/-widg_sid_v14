@@ -97,7 +97,7 @@ class StatsFloatingPanel(QWidget):
                 background-color: rgba(255, 50, 50, 0.7);
             }}
         """)
-        close_btn.clicked.connect(self.close)
+        close_btn.clicked.connect(self.hide)  # Ocultar en lugar de cerrar
         btn_layout.addStretch()
         btn_layout.addWidget(close_btn)
         btn_layout.addStretch()

@@ -133,7 +133,7 @@ class FavoritesFloatingPanel(QWidget):
                 background-color: rgba(255, 50, 50, 0.7);
             }}
         """)
-        close_btn.clicked.connect(self.close)
+        close_btn.clicked.connect(self.hide)  # Ocultar en lugar de cerrar
         btn_layout.addWidget(close_btn)
 
         header_layout.addLayout(btn_layout)
