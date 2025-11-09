@@ -54,6 +54,7 @@ class FloatingPanel(QWidget):
         self.filter_engine = AdvancedFilterEngine()  # Motor de filtrado avanzado
         self.all_items = []  # Store all items before filtering
         self.all_lists = []  # Store all lists before filtering
+        self.visible_items = []  # Store currently visible items (after filtering)
         self.current_filters = {}  # Filtros activos actuales
         self.current_state_filter = "normal"  # Filtro de estado actual: normal, archived, inactive, all
         self.is_pinned = False  # Estado de anclaje del panel
@@ -313,8 +314,38 @@ class FloatingPanel(QWidget):
         self.state_filter_combo.currentIndexChanged.connect(self.on_state_filter_changed)
         filters_button_layout.addWidget(self.state_filter_combo)
 
-        # Agregar stretch para empujar el botón Nueva Lista a la derecha
+        # Agregar stretch para empujar los botones a la derecha
         filters_button_layout.addStretch()
+
+        # Botón Copiar Todo
+        self.copy_all_button = QPushButton("📋 Copiar Todo")
+        self.copy_all_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.copy_all_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.get_color('primary')};
+                color: {self.theme.get_color('text_primary')};
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 10pt;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme.get_color('secondary')};
+                color: {self.theme.get_color('text_primary')};
+            }}
+            QPushButton:pressed {{
+                background-color: {self.theme.get_color('accent')};
+            }}
+            QPushButton:disabled {{
+                background-color: {self.theme.get_color('surface')};
+                color: {self.theme.get_color('text_secondary')};
+            }}
+        """)
+        self.copy_all_button.setToolTip("Copiar el contenido de todos los items visibles actualmente")
+        self.copy_all_button.clicked.connect(self.on_copy_all_clicked)
+        self.copy_all_button.setEnabled(False)  # Disabled hasta que se cargue una categoría
+        filters_button_layout.addWidget(self.copy_all_button)
 
         # Botón Nueva Lista
         self.new_list_button = QPushButton("📝 Nueva Lista")
@@ -481,6 +512,12 @@ class FloatingPanel(QWidget):
             lists: List of list metadata dicts from ListController.get_lists()
         """
         logger.info(f"Displaying {len(items)} items and {len(lists)} lists")
+
+        # Store visible items for "Copy All" functionality
+        self.visible_items = items
+
+        # Enable/disable "Copiar Todo" button based on visible items
+        self.copy_all_button.setEnabled(len(items) > 0)
 
         # Clear existing content
         self.clear_items()
@@ -722,6 +759,45 @@ class FloatingPanel(QWidget):
         """Handle individual list item copy"""
         logger.info(f"List item copied: {content[:50]}...")
         # El contenido ya fue copiado por el ListWidget, solo loguear
+
+    def on_copy_all_clicked(self):
+        """Handle click on 'Copiar Todo' button - Copy all visible items to clipboard"""
+        logger.info("Copy All button clicked")
+
+        if not self.visible_items:
+            logger.warning("No visible items to copy")
+            return
+
+        try:
+            from PyQt6.QtWidgets import QApplication
+
+            # Collect all item contents
+            all_contents = []
+            for item in self.visible_items:
+                if item.content:
+                    # Format: Label: Content
+                    all_contents.append(f"{item.label}: {item.content}")
+
+            if not all_contents:
+                logger.warning("No content to copy from visible items")
+                return
+
+            # Join all contents with double newlines for readability
+            combined_content = "\n\n".join(all_contents)
+
+            # Copy to clipboard
+            clipboard = QApplication.clipboard()
+            clipboard.setText(combined_content)
+
+            logger.info(f"Copied {len(self.visible_items)} items to clipboard")
+
+            # Visual feedback: Change button text temporarily
+            original_text = self.copy_all_button.text()
+            self.copy_all_button.setText("✅ Copiado!")
+            QTimer.singleShot(1500, lambda: self.copy_all_button.setText(original_text))
+
+        except Exception as e:
+            logger.error(f"Error copying all items: {e}", exc_info=True)
 
     def on_new_list_clicked(self):
         """Handle click on 'Nueva Lista' button"""
