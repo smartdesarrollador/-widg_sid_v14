@@ -31,7 +31,7 @@ class MainController:
         self.clipboard_manager = ClipboardManager()
         self.category_filter_engine = CategoryFilterEngine(db_path="widget_sidebar.db")
         self.pinned_panels_manager = PinnedPanelsManager(self.config_manager.db)
-        self.browser_manager = SimpleBrowserManager(self.config_manager.db)
+        self.browser_manager = SimpleBrowserManager(self.config_manager.db, controller=self)
         self.notebook_manager = NotebookManager(self.config_manager.db)
         self.workarea_manager = WorkareaManager()
 

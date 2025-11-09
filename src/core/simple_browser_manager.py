@@ -22,15 +22,17 @@ class SimpleBrowserManager:
     - Gestionar perfiles persistentes del navegador
     """
 
-    def __init__(self, db_manager, main_window=None):
+    def __init__(self, db_manager, controller=None, main_window=None):
         """
         Inicializa el manager.
 
         Args:
             db_manager: Instancia de DBManager para persistencia
+            controller: Referencia a MainController para acceso a funcionalidad de la app
             main_window: Referencia a MainWindow para posicionamiento (opcional)
         """
         self.db = db_manager
+        self.controller = controller
         self.main_window = main_window
         self.browser_window: Optional['SimpleBrowserWindow'] = None
         self._home_url: Optional[str] = None
@@ -75,11 +77,12 @@ class SimpleBrowserManager:
             width = config.get('width', 500)
             height = config.get('height', 700)
 
-            # Crear ventana pasando el DBManager y ProfileManager
+            # Crear ventana pasando el DBManager, ProfileManager y Controller
             self.browser_window = SimpleBrowserWindow(
                 home_url,
                 db_manager=self.db,
-                profile_manager=self.profile_manager
+                profile_manager=self.profile_manager,
+                controller=self.controller
             )
 
             # Aplicar tamaño configurado

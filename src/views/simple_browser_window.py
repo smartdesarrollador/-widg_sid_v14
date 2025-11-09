@@ -7,6 +7,7 @@ Date: 2025-11-02
 import sys
 import logging
 import ctypes
+import urllib.parse
 from ctypes import wintypes
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -27,38 +28,77 @@ logger = logging.getLogger(__name__)
 class CustomWebEngineView(QWebEngineView):
     """
     QWebEngineView personalizado con menú contextual que incluye
-    opción para guardar texto seleccionado como snippet.
+    opción para guardar texto seleccionado como snippet y archivos como items PATH.
     """
 
-    # Señal para solicitar guardar snippet
+    # Señales
     save_snippet_requested = pyqtSignal(str)  # Emite el texto seleccionado
+    save_file_as_item_requested = pyqtSignal(str)  # Emite la URL del archivo
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.selected_text = ""
         self.context_menu_pos = None  # Guardar posición del menú contextual
+        self.clicked_element_url = ""  # URL del elemento clickeado (imagen/link)
 
     def contextMenuEvent(self, event):
         """
-        Sobrescribe el menú contextual para agregar opción de guardar snippet.
+        Sobrescribe el menú contextual para agregar opciones de guardar snippet y archivos.
         """
         # Guardar la posición ANTES de la llamada asíncrona
         self.context_menu_pos = event.globalPos()
 
-        # Obtener el texto seleccionado mediante JavaScript
+        # JavaScript para obtener tanto el texto seleccionado como la URL del elemento clickeado
+        js_code = """
+        (function() {
+            var selectedText = window.getSelection().toString();
+            var clickedElement = document.elementFromPoint(%d, %d);
+            var elementUrl = '';
+
+            // Detectar si es imagen
+            if (clickedElement && clickedElement.tagName === 'IMG') {
+                elementUrl = clickedElement.src;
+            }
+            // Detectar si es un link (puede ser descarga)
+            else if (clickedElement && clickedElement.tagName === 'A') {
+                elementUrl = clickedElement.href;
+            }
+            // Buscar en elementos padre
+            else if (clickedElement) {
+                var parent = clickedElement.closest('a, img');
+                if (parent) {
+                    elementUrl = parent.href || parent.src || '';
+                }
+            }
+
+            return {
+                selectedText: selectedText,
+                elementUrl: elementUrl
+            };
+        })();
+        """ % (event.pos().x(), event.pos().y())
+
+        # Obtener información del contexto
         self.page().runJavaScript(
-            "window.getSelection().toString();",
+            js_code,
             lambda result: self._show_context_menu(result)
         )
 
-    def _show_context_menu(self, selected_text):
+    def _show_context_menu(self, context_data):
         """
-        Muestra el menú contextual con la opción de guardar snippet.
+        Muestra el menú contextual con las opciones de guardar snippet y archivos.
 
         Args:
-            selected_text: Texto seleccionado obtenido via JavaScript
+            context_data: Dict con selectedText y elementUrl obtenidos via JavaScript
         """
-        self.selected_text = selected_text.strip() if selected_text else ""
+        # Manejar resultado (puede ser dict o string si hubo error)
+        if isinstance(context_data, dict):
+            self.selected_text = context_data.get('selectedText', '').strip()
+            self.clicked_element_url = context_data.get('elementUrl', '').strip()
+        else:
+            # Fallback para compatibilidad
+            self.selected_text = context_data.strip() if context_data else ""
+            self.clicked_element_url = ""
 
         # Crear menú contextual
         context_menu = QMenu(self)
@@ -93,6 +133,17 @@ class CustomWebEngineView(QWebEngineView):
                 lambda: self.save_snippet_requested.emit(self.selected_text)
             )
             context_menu.addAction(save_snippet_action)
+
+        # Si hay URL de imagen/archivo, agregar opción de guardar como item PATH
+        if self.clicked_element_url and self._is_downloadable_resource(self.clicked_element_url):
+            save_file_action = QAction("📦 Guardar archivo como Item PATH", self)
+            save_file_action.triggered.connect(
+                lambda: self.save_file_as_item_requested.emit(self.clicked_element_url)
+            )
+            context_menu.addAction(save_file_action)
+
+        # Separador si se agregó alguna opción especial
+        if self.selected_text or (self.clicked_element_url and self._is_downloadable_resource(self.clicked_element_url)):
             context_menu.addSeparator()
 
         # Agregar acciones estándar del navegador
@@ -121,6 +172,52 @@ class CustomWebEngineView(QWebEngineView):
         # Mostrar menú en la posición guardada del click derecho
         if self.context_menu_pos:
             context_menu.exec(self.context_menu_pos)
+
+    def _is_downloadable_resource(self, url: str) -> bool:
+        """
+        Verifica si la URL es de un recurso descargable (imagen, documento, etc.)
+
+        Args:
+            url: URL del recurso
+
+        Returns:
+            True si es un recurso descargable
+        """
+        if not url:
+            return False
+
+        # Extensiones de archivos descargables
+        downloadable_extensions = {
+            # Imágenes
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico',
+            # Documentos
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+            '.txt', '.md', '.csv', '.odt', '.ods', '.odp',
+            # Videos
+            '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm',
+            # Audio
+            '.mp3', '.wav', '.ogg', '.m4a', '.flac',
+            # Comprimidos
+            '.zip', '.rar', '.7z', '.tar', '.gz',
+            # Otros
+            '.json', '.xml', '.sql'
+        }
+
+        # Convertir a minúsculas para comparación
+        url_lower = url.lower()
+
+        # Verificar si termina con alguna extensión descargable
+        for ext in downloadable_extensions:
+            if url_lower.endswith(ext):
+                return True
+
+        # Verificar si contiene la extensión en la URL (antes de parámetros)
+        url_path = url_lower.split('?')[0]  # Quitar parámetros
+        for ext in downloadable_extensions:
+            if ext in url_path:
+                return True
+
+        return False
 
 
 # ===========================================================================
@@ -302,7 +399,7 @@ class SimpleBrowserWindow(QWidget):
     # Señales
     closed = pyqtSignal()
 
-    def __init__(self, url: str = "https://www.google.com", db_manager=None, profile_manager=None):
+    def __init__(self, url: str = "https://www.google.com", db_manager=None, profile_manager=None, controller=None):
         """
         Inicializa la ventana del navegador.
 
@@ -310,11 +407,13 @@ class SimpleBrowserWindow(QWidget):
             url: URL inicial a cargar
             db_manager: Instancia de DBManager para manejar marcadores y sesiones
             profile_manager: Instancia de BrowserProfileManager para perfiles persistentes
+            controller: Referencia a MainController para acceso a funcionalidad de la app
         """
         super().__init__()
         self.url = url
         self.db = db_manager
         self.profile_manager = profile_manager
+        self.controller = controller
         self.appbar_registered = False  # Estado del AppBar
 
         # Variables para redimensionamiento
@@ -756,6 +855,7 @@ class SimpleBrowserWindow(QWidget):
         browser.urlChanged.connect(lambda url: self._on_url_changed(url))
         browser.titleChanged.connect(lambda title: self._on_title_changed(title))
         browser.save_snippet_requested.connect(self.save_snippet_as_item)
+        browser.save_file_as_item_requested.connect(self.save_file_as_path_item)
 
         # Agregar a la lista de pestañas
         self.tabs.append(browser)
@@ -1698,6 +1798,225 @@ class SimpleBrowserWindow(QWidget):
                 self,
                 "Error",
                 f"Error al guardar snippet:\n{str(e)}"
+            )
+
+    def save_file_as_path_item(self, file_url: str):
+        """
+        Descarga un archivo desde una URL y abre ItemEditorDialog para guardarlo como item PATH.
+
+        Args:
+            file_url: URL del archivo a descargar y guardar
+        """
+        try:
+            if not self.db:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    "No hay conexión a la base de datos"
+                )
+                return
+
+            if not file_url or not file_url.strip():
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self,
+                    "Sin archivo",
+                    "No hay archivo seleccionado para guardar"
+                )
+                return
+
+            logger.info(f"[save_file_as_path_item] Descargando archivo desde: {file_url}")
+
+            # Descargar archivo a ubicación temporal
+            import urllib.request
+            import tempfile
+            import os
+            from pathlib import Path
+            from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+            from PyQt6.QtCore import Qt
+
+            # Mostrar dialog de progreso
+            progress = QProgressDialog("Descargando archivo...", "Cancelar", 0, 100, self)
+            progress.setWindowTitle("Descargando")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+
+            # Obtener nombre del archivo de la URL
+            url_path = urllib.parse.urlparse(file_url).path
+            filename = os.path.basename(url_path)
+            if not filename:
+                filename = "downloaded_file"
+
+            # Crear archivo temporal
+            temp_dir = tempfile.mkdtemp(prefix='browser_download_')
+            temp_file_path = os.path.join(temp_dir, filename)
+
+            try:
+                # Función de callback para progreso
+                def report_progress(block_num, block_size, total_size):
+                    if progress.wasCanceled():
+                        raise Exception("Descarga cancelada por el usuario")
+                    if total_size > 0:
+                        downloaded = block_num * block_size
+                        percent = min(int((downloaded / total_size) * 100), 100)
+                        progress.setValue(percent)
+                    QApplication.processEvents()
+
+                # Descargar archivo
+                urllib.request.urlretrieve(file_url, temp_file_path, report_progress)
+                progress.setValue(100)
+
+                logger.info(f"[save_file_as_path_item] Archivo descargado a: {temp_file_path}")
+
+                # Obtener categorías de la base de datos
+                from models.category import Category
+                categories_data = self.db.get_categories()
+
+                # Mapear correctamente los datos (id -> category_id)
+                categories = []
+                for cat in categories_data:
+                    category = Category(
+                        category_id=cat['id'],
+                        name=cat['name'],
+                        icon=cat.get('icon', ''),
+                        order_index=cat.get('order_index', 0),
+                        is_active=cat.get('is_active', True),
+                        is_predefined=cat.get('is_predefined', False),
+                        color=cat.get('color'),
+                        badge=cat.get('badge')
+                    )
+                    categories.append(category)
+
+                if not categories:
+                    QMessageBox.warning(
+                        self,
+                        "Sin categorías",
+                        "No hay categorías disponibles. Crea una categoría primero."
+                    )
+                    return
+
+                # Abrir ItemEditorDialog con el archivo pre-cargado
+                from views.item_editor_dialog import ItemEditorDialog
+
+                # Necesitamos un controller mock o usar el existente
+                # El dialog necesita category_id, así que pediremos al usuario seleccionar categoría primero
+                from PyQt6.QtWidgets import QInputDialog
+
+                # Crear lista de nombres de categorías
+                category_names = [cat.name for cat in categories]
+
+                # Pedir al usuario que seleccione una categoría
+                category_name, ok = QInputDialog.getItem(
+                    self,
+                    "Seleccionar Categoría",
+                    "Selecciona la categoría donde guardar el archivo:",
+                    category_names,
+                    0,
+                    False
+                )
+
+                if not ok:
+                    return  # Usuario canceló
+
+                # Encontrar el category_id
+                selected_category = next((cat for cat in categories if cat.name == category_name), None)
+                if not selected_category:
+                    return
+
+                # Crear dialog con la categoría seleccionada
+                dialog = ItemEditorDialog(
+                    item=None,  # Nuevo item
+                    category_id=selected_category.id,  # Usar .id (el atributo correcto)
+                    controller=self.controller,  # Pasar controller de la aplicación
+                    parent=self
+                )
+
+                # Asegurar que el dialog tenga file_manager y db_manager
+                if not hasattr(dialog, 'file_manager') or dialog.file_manager is None:
+                    from core.config_manager import ConfigManager
+                    from core.file_manager import FileManager
+                    db_path = str(self.db.db_path) if hasattr(self.db, 'db_path') else "widget_sidebar.db"
+                    config_manager = ConfigManager(db_path)
+                    dialog.file_manager = FileManager(config_manager)
+                else:
+                    config_manager = None
+
+                if not hasattr(dialog, 'db_manager') or dialog.db_manager is None:
+                    dialog.db_manager = self.db
+
+                # Pre-cargar el archivo en el dialog
+                # Simular selección de archivo
+                dialog.selected_file_path = temp_file_path
+                dialog.selected_file_metadata = dialog.file_manager.get_file_metadata(temp_file_path)
+
+                # Pre-seleccionar tipo PATH
+                for i in range(dialog.type_combo.count()):
+                    if dialog.type_combo.itemData(i).name == "PATH":
+                        dialog.type_combo.setCurrentIndex(i)
+                        break
+
+                # Actualizar UI con info del archivo
+                metadata = dialog.selected_file_metadata
+                dialog.file_name_label.setText(metadata['original_filename'])
+                dialog.file_size_label.setText(dialog.file_manager.format_file_size(metadata['file_size']))
+
+                file_type_icon = dialog.file_manager.get_file_icon_by_type(metadata['file_type'])
+                dialog.file_type_label.setText(f"{file_type_icon} {metadata['file_type']}")
+
+                # Mostrar ruta relativa en content
+                target_folder = dialog.file_manager.get_target_folder(metadata['file_extension'])
+                relative_path = f"{target_folder}/{metadata['original_filename']}"
+                dialog.content_input.setPlainText(relative_path)
+                dialog.content_input.setReadOnly(True)
+
+                # Auto-fill label si está vacío
+                if not dialog.label_input.text().strip():
+                    filename_base = Path(metadata['original_filename']).stem
+                    dialog.label_input.setText(filename_base)
+
+                # Mostrar file info group
+                dialog.file_info_group.show()
+
+                # Mostrar dialog
+                if dialog.exec():
+                    QMessageBox.information(
+                        self,
+                        "Éxito",
+                        f"Archivo guardado exitosamente como Item PATH:\n\n{dialog.label_input.text()}"
+                    )
+                    logger.info(f"Archivo guardado como Item PATH desde navegador: {dialog.label_input.text()}")
+
+                # Limpieza
+                if config_manager:
+                    config_manager.close()
+
+            except Exception as download_error:
+                logger.error(f"Error al descargar archivo: {download_error}")
+                QMessageBox.critical(
+                    self,
+                    "Error de Descarga",
+                    f"No se pudo descargar el archivo:\n{str(download_error)}"
+                )
+            finally:
+                progress.close()
+                # Limpiar archivo temporal
+                try:
+                    if os.path.exists(temp_file_path):
+                        os.unlink(temp_file_path)
+                    if os.path.exists(temp_dir):
+                        os.rmdir(temp_dir)
+                except:
+                    pass
+
+        except Exception as e:
+            logger.error(f"Error al guardar archivo como item PATH: {e}", exc_info=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error al guardar archivo:\n{str(e)}"
             )
 
     def _restore_session_tabs(self, tabs_data: list):
