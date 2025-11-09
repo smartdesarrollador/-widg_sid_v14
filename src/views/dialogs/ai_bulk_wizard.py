@@ -14,7 +14,7 @@ import logging
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget,
-    QPushButton, QLabel, QMessageBox, QWidget
+    QPushButton, QLabel, QMessageBox, QWidget, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -477,13 +477,14 @@ class AIBulkWizard(QDialog):
         """Override para centrar el dialog al mostrarse."""
         super().showEvent(event)
 
-        # Centrar en pantalla
-        if self.parent():
-            parent_geo = self.parent().geometry()
-            self.move(
-                parent_geo.center().x() - self.width() // 2,
-                parent_geo.center().y() - self.height() // 2
-            )
+        # Centrar en la pantalla disponible
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            x = screen_geometry.center().x() - self.width() // 2
+            y = screen_geometry.center().y() - self.height() // 2
+            self.move(x, y)
+            logger.debug(f"Wizard centered at ({x}, {y}) on screen {screen_geometry}")
 
         logger.debug("Wizard shown")
 
