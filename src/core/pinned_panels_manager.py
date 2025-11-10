@@ -34,19 +34,34 @@ class PinnedPanelsManager:
             str: JSON string of filter configuration, or None if no filters
         """
         try:
+            # Extract search text safely
+            search_text = ""
+            if hasattr(panel_widget, 'search_bar') and panel_widget.search_bar:
+                if hasattr(panel_widget.search_bar, 'search_input'):
+                    search_text = panel_widget.search_bar.search_input.text()
+
             filter_config = {
                 "advanced_filters": getattr(panel_widget, 'current_filters', {}),
                 "state_filter": getattr(panel_widget, 'current_state_filter', 'normal'),
-                "search_text": getattr(panel_widget, 'search_bar', None).text() if hasattr(panel_widget, 'search_bar') else ""
+                "search_text": search_text
             }
 
             # Only save if there's actual filter data
-            if filter_config["advanced_filters"] or filter_config["state_filter"] != "normal" or filter_config["search_text"]:
+            has_filters = (
+                filter_config["advanced_filters"] or
+                filter_config["state_filter"] != "normal" or
+                filter_config["search_text"]
+            )
+
+            if has_filters:
+                logger.debug(f"Serializing filter config: {filter_config}")
                 return json.dumps(filter_config)
 
+            logger.debug("No filters to serialize")
             return None
+
         except Exception as e:
-            logger.warning(f"Could not serialize filter config: {e}")
+            logger.error(f"Could not serialize filter config: {e}", exc_info=True)
             return None
 
     def _deserialize_filter_config(self, filter_config_json: Optional[str]) -> Optional[Dict]:
@@ -60,14 +75,29 @@ class PinnedPanelsManager:
             dict: Filter configuration dict, or None if no filters saved
         """
         if not filter_config_json:
+            logger.debug("No filter config to deserialize")
             return None
 
         try:
             filter_config = json.loads(filter_config_json)
+
+            # Validate structure
+            expected_keys = {'advanced_filters', 'state_filter', 'search_text'}
+            if not all(key in filter_config for key in expected_keys):
+                logger.warning(f"Filter config missing expected keys. Found: {filter_config.keys()}")
+                # Add missing keys with defaults
+                filter_config.setdefault('advanced_filters', {})
+                filter_config.setdefault('state_filter', 'normal')
+                filter_config.setdefault('search_text', '')
+
             logger.debug(f"Deserialized filter config: {filter_config}")
             return filter_config
+
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse filter config JSON: {e}")
+            logger.error(f"Failed to parse filter config JSON: {e}", exc_info=True)
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error deserializing filter config: {e}", exc_info=True)
             return None
 
     def _get_next_available_shortcut(self) -> str:

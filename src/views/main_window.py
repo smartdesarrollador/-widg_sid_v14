@@ -236,7 +236,8 @@ class MainWindow(QMainWindow):
                     if not self.floating_panel:
                         self.floating_panel = FloatingPanel(
                             config_manager=self.config_manager,
-                            list_controller=self.controller.list_controller if self.controller else None
+                            list_controller=self.controller.list_controller if self.controller else None,
+                            main_window=self
                         )
                         self.floating_panel.item_clicked.connect(self.on_item_clicked)
                         self.floating_panel.window_closed.connect(self.on_floating_panel_closed)
@@ -1468,7 +1469,8 @@ class MainWindow(QMainWindow):
                         list_controller=self.controller.list_controller if self.controller else None,
                         panel_id=panel_id,
                         custom_name=panel_data.get('custom_name'),
-                        custom_color=panel_data.get('custom_color')
+                        custom_color=panel_data.get('custom_color'),
+                        main_window=self
                     )
 
                     # Connect signals
@@ -1567,7 +1569,8 @@ class MainWindow(QMainWindow):
             list_controller=self.controller.list_controller if self.controller else None,
             panel_id=panel_id,
             custom_name=panel_data.get('custom_name'),
-            custom_color=panel_data.get('custom_color')
+            custom_color=panel_data.get('custom_color'),
+            main_window=self
         )
 
         # Connect signals

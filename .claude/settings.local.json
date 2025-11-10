@@ -48,7 +48,8 @@
       "Bash(test_output.txt)",
       "Bash(test_output2.txt)",
       "Bash(test_full.txt)",
-      "Bash(del \"C:\\Users\\ASUS\\Desktop\\proyectos_python\\widget_sidebar\\util\\get_db_schema.py\")"
+      "Bash(del \"C:\\Users\\ASUS\\Desktop\\proyectos_python\\widget_sidebar\\util\\get_db_schema.py\")",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

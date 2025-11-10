@@ -45,11 +45,12 @@ class FloatingPanel(QWidget):
     # Signal emitted when URL should be opened in embedded browser
     url_open_requested = pyqtSignal(str)
 
-    def __init__(self, config_manager=None, list_controller=None, panel_id=None, custom_name=None, custom_color=None, parent=None):
+    def __init__(self, config_manager=None, list_controller=None, panel_id=None, custom_name=None, custom_color=None, parent=None, main_window=None):
         super().__init__(parent)
         self.current_category = None
         self.config_manager = config_manager
         self.list_controller = list_controller  # Controlador de listas
+        self.main_window = main_window  # Direct reference to MainWindow (for auto-save)
         self.search_engine = SearchEngine()
         self.filter_engine = AdvancedFilterEngine()  # Motor de filtrado avanzado
         self.all_items = []  # Store all items before filtering
@@ -934,9 +935,12 @@ class FloatingPanel(QWidget):
         self.on_search_changed(current_query)
 
         # AUTO-UPDATE: Trigger panel state save with new filters
+        logger.debug(f"[AUTO-SAVE CHECK] is_pinned={self.is_pinned}, panel_id={self.panel_id}, config_manager={self.config_manager is not None}")
         if self.is_pinned and self.panel_id and self.config_manager:
             self.update_timer.start(self.update_delay_ms)
-            logger.debug("Filter change triggered auto-save")
+            logger.info(f"[AUTO-SAVE] Filter change triggered auto-save timer ({self.update_delay_ms}ms)")
+        else:
+            logger.warning(f"[AUTO-SAVE] Skipped - panel not ready for auto-save")
 
     def on_filters_cleared(self):
         """Handle cuando se limpian todos los filtros"""
@@ -963,9 +967,12 @@ class FloatingPanel(QWidget):
         self.on_search_changed(current_query)
 
         # AUTO-UPDATE: Trigger panel state save with new state filter
+        logger.debug(f"[AUTO-SAVE CHECK] is_pinned={self.is_pinned}, panel_id={self.panel_id}, config_manager={self.config_manager is not None}")
         if self.is_pinned and self.panel_id and self.config_manager:
             self.update_timer.start(self.update_delay_ms)
-            logger.debug("State filter change triggered auto-save")
+            logger.info(f"[AUTO-SAVE] State filter change triggered auto-save timer ({self.update_delay_ms}ms)")
+        else:
+            logger.warning(f"[AUTO-SAVE] Skipped - panel not ready for auto-save")
 
     def filter_items_by_state(self, items):
         """Filtrar items por estado (activo/archivado)
@@ -1367,30 +1374,32 @@ class FloatingPanel(QWidget):
             self.update_timer.start(self.update_delay_ms)
 
     def _save_panel_state_to_db(self):
-        """AUTO-UPDATE: Save current panel state (position/size) to database"""
+        """AUTO-UPDATE: Save current panel state (position/size/filters) to database"""
+        logger.info(f"[AUTO-SAVE] _save_panel_state_to_db() called for panel {self.panel_id}")
+
         # Only save if this is a pinned panel with a valid panel_id
         if not self.is_pinned or not self.panel_id or not self.config_manager:
+            logger.warning(f"[AUTO-SAVE] Cannot save - is_pinned={self.is_pinned}, panel_id={self.panel_id}, config_manager={self.config_manager is not None}")
             return
 
         try:
-            # Get PinnedPanelsManager from main_window via parent chain
-            from views.main_window import MainWindow
+            # Log current filter state
+            logger.info(f"[AUTO-SAVE] Current filters state:")
+            logger.info(f"  - current_filters: {self.current_filters}")
+            logger.info(f"  - current_state_filter: {self.current_state_filter}")
+            logger.info(f"  - search_text: '{self.search_bar.search_input.text()}'")
 
-            # Find MainWindow in parent chain
-            main_window = None
-            parent = self.parent()
-            while parent:
-                if isinstance(parent, MainWindow):
-                    main_window = parent
-                    break
-                parent = parent.parent()
+            # Use direct reference to MainWindow (no need to search parent chain)
+            if not self.main_window:
+                logger.warning("[AUTO-SAVE] main_window reference is None - skipping panel state save")
+                return
 
-            if not main_window or not main_window.controller:
-                logger.warning("Could not find MainWindow or controller - skipping panel state save")
+            if not self.main_window.controller:
+                logger.warning("[AUTO-SAVE] main_window.controller is None - skipping panel state save")
                 return
 
             # Get the PinnedPanelsManager
-            panels_manager = main_window.controller.pinned_panels_manager
+            panels_manager = self.main_window.controller.pinned_panels_manager
 
             # Update panel state in database
             panels_manager.update_panel_state(
@@ -1398,7 +1407,7 @@ class FloatingPanel(QWidget):
                 panel_widget=self
             )
 
-            logger.debug(f"Panel {self.panel_id} state auto-saved to database (Position: {self.pos()}, Size: {self.size()})")
+            logger.info(f"[AUTO-SAVE] Panel {self.panel_id} state saved successfully (Position: {self.pos()}, Size: {self.size()})")
 
         except Exception as e:
-            logger.error(f"Error auto-saving panel state: {e}", exc_info=True)
+            logger.error(f"[AUTO-SAVE] Error auto-saving panel state: {e}", exc_info=True)
