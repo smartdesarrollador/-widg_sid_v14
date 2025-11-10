@@ -83,8 +83,21 @@ class ListCreatorDialog(QDialog):
     def setup_ui(self):
         """Configura la interfaz del diálogo"""
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create main scroll area for all form content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        # Container widget for scroll area
+        scroll_container = QWidget()
+        form_layout = QVBoxLayout(scroll_container)
+        form_layout.setSpacing(15)
+        form_layout.setContentsMargins(20, 20, 20, 20)
 
         # === HEADER ===
         header_label = QLabel("Crea una lista de pasos secuenciales")
@@ -92,22 +105,22 @@ class ListCreatorDialog(QDialog):
         header_font.setPointSize(11)
         header_label.setFont(header_font)
         header_label.setStyleSheet("color: #aaaaaa;")
-        main_layout.addWidget(header_label)
+        form_layout.addWidget(header_label)
 
         # === NOMBRE DE LA LISTA ===
         name_label = QLabel("Nombre de la lista:*")
         name_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        main_layout.addWidget(name_label)
+        form_layout.addWidget(name_label)
 
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("Ej: Deploy a Producción, Tutorial Git Básico...")
         self.name_input.textChanged.connect(self.on_name_changed)
-        main_layout.addWidget(self.name_input)
+        form_layout.addWidget(self.name_input)
 
         # Label de validación del nombre
         self.name_validation_label = QLabel("")
         self.name_validation_label.setStyleSheet("color: #ff6666; font-size: 11px;")
-        main_layout.addWidget(self.name_validation_label)
+        form_layout.addWidget(self.name_validation_label)
 
         # === CATEGORÍA ===
         category_layout = QHBoxLayout()
@@ -131,26 +144,26 @@ class ListCreatorDialog(QDialog):
                     break
 
         category_layout.addWidget(self.category_combo)
-        main_layout.addLayout(category_layout)
+        form_layout.addLayout(category_layout)
 
         # === DESCRIPCIÓN (OPCIONAL) ===
         desc_label = QLabel("Descripción (opcional):")
         desc_label.setStyleSheet("font-size: 12px; margin-top: 10px;")
-        main_layout.addWidget(desc_label)
+        form_layout.addWidget(desc_label)
 
         self.description_input = QTextEdit()
         self.description_input.setPlaceholderText("Descripción de la lista, contexto, notas...")
         self.description_input.setMaximumHeight(60)
-        main_layout.addWidget(self.description_input)
+        form_layout.addWidget(self.description_input)
 
         # === TAGS COMUNES (se aplican a todos los pasos) ===
         tags_label = QLabel("Tags comunes (opcional - se aplican a todos los pasos):")
         tags_label.setStyleSheet("font-size: 12px; margin-top: 10px;")
-        main_layout.addWidget(tags_label)
+        form_layout.addWidget(tags_label)
 
         self.common_tags_input = QLineEdit()
         self.common_tags_input.setPlaceholderText("Ej: python, git, produccion...")
-        main_layout.addWidget(self.common_tags_input)
+        form_layout.addWidget(self.common_tags_input)
 
         # Tag Group Selector (optional) - wrapped in scroll area
         if self.db_path:
@@ -190,7 +203,7 @@ class ListCreatorDialog(QDialog):
                     }
                 """)
 
-                main_layout.addWidget(tags_scroll_area)
+                form_layout.addWidget(tags_scroll_area)
             except Exception as e:
                 logger.warning(f"Could not initialize TagGroupSelector: {e}")
                 self.tag_group_selector = None
@@ -201,29 +214,35 @@ class ListCreatorDialog(QDialog):
         separator_label = QLabel("──────── Pasos del Proceso ────────")
         separator_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         separator_label.setStyleSheet("color: #666666; margin: 10px 0;")
-        main_layout.addWidget(separator_label)
+        form_layout.addWidget(separator_label)
 
-        # === SCROLL AREA PARA PASOS ===
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        # Widget contenedor para los pasos
+        # === CONTENEDOR PARA PASOS (sin scroll separado) ===
         self.steps_container = QWidget()
         self.steps_layout = QVBoxLayout(self.steps_container)
         self.steps_layout.setSpacing(10)
         self.steps_layout.setContentsMargins(0, 0, 0, 0)
 
-        scroll.setWidget(self.steps_container)
-        main_layout.addWidget(scroll, stretch=1)
+        form_layout.addWidget(self.steps_container)
 
         # === BOTÓN AGREGAR PASO ===
         add_step_button = QPushButton("+ Agregar Paso")
         add_step_button.setFixedWidth(150)
         add_step_button.clicked.connect(self.add_step)
-        main_layout.addWidget(add_step_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        form_layout.addWidget(add_step_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        # === BOTONES DE ACCIÓN ===
+        # Add stretch at the end of form (inside scroll)
+        form_layout.addStretch()
+
+        # Set scroll widget and add to main layout
+        scroll_area.setWidget(scroll_container)
+        main_layout.addWidget(scroll_area)
+
+        # === BOTONES DE ACCIÓN (FUERA DEL SCROLL, FIJOS EN LA PARTE INFERIOR) ===
+        buttons_container = QWidget()
+        buttons_container_layout = QVBoxLayout(buttons_container)
+        buttons_container_layout.setContentsMargins(20, 10, 20, 20)
+        buttons_container_layout.setSpacing(0)
+
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
 
@@ -237,7 +256,8 @@ class ListCreatorDialog(QDialog):
         self.create_button.clicked.connect(self.create_list)
         buttons_layout.addWidget(self.create_button)
 
-        main_layout.addLayout(buttons_layout)
+        buttons_container_layout.addLayout(buttons_layout)
+        main_layout.addWidget(buttons_container)
 
         # Actualizar contador inicial
         self.update_create_button_text()
@@ -299,8 +319,28 @@ class ListCreatorDialog(QDialog):
                 background-color: #2a2a2a;
             }
             QScrollArea {
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: #2d2d2d;
+                width: 12px;
+                border-radius: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #5a5a5a;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #007acc;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
             }
         """)
 
