@@ -39,6 +39,9 @@ class Sidebar(QWidget):
     # Signal emitted when global search button is clicked
     global_search_clicked = pyqtSignal()
 
+    # Signal emitted when pinned panels manager button is clicked
+    pinned_panels_manager_clicked = pyqtSignal()
+
     # Signal emitted when notebook button is clicked
     notebook_clicked = pyqtSignal()
 
@@ -477,6 +480,39 @@ class Sidebar(QWidget):
         self.dashboard_button.clicked.connect(self.on_dashboard_clicked)
         main_layout.addWidget(self.dashboard_button)
 
+        # Pinned Panels Manager button
+        self.pinned_panels_button = QPushButton("📍")
+        self.pinned_panels_button.setFixedSize(70, 45)
+        self.pinned_panels_button.setToolTip("Gestión de Paneles Anclados (Ctrl+Shift+P)")
+        self.pinned_panels_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.pinned_panels_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.get_color('background_deep')};
+                color: {self.theme.get_color('text_secondary')};
+                border: none;
+                border-top: 2px solid {self.theme.get_color('surface')};
+                font-size: 16pt;
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self.theme.get_color('accent')},
+                    stop:1 {self.theme.get_color('secondary')}
+                );
+                color: {self.theme.get_color('text_primary')};
+            }}
+            QPushButton:pressed {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self.theme.get_color('secondary')},
+                    stop:1 {self.theme.get_color('accent')}
+                );
+                color: {self.theme.get_color('background_deep')};
+            }}
+        """)
+        self.pinned_panels_button.clicked.connect(self.on_pinned_panels_manager_clicked)
+        main_layout.addWidget(self.pinned_panels_button)
+
         # Settings button at the bottom
         self.settings_button = QPushButton("⚙")
         self.settings_button.setFixedSize(70, 45)
@@ -653,6 +689,10 @@ class Sidebar(QWidget):
     def on_quick_create_clicked(self):
         """Handle quick create button click"""
         self.quick_create_clicked.emit()
+
+    def on_pinned_panels_manager_clicked(self):
+        """Handle pinned panels manager button click"""
+        self.pinned_panels_manager_clicked.emit()
 
     def set_controller(self, controller):
         """Set the main controller reference"""

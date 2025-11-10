@@ -196,6 +196,7 @@ class MainWindow(QMainWindow):
         self.sidebar.category_filter_clicked.connect(self.on_category_filter_clicked)
         self.sidebar.refresh_clicked.connect(self.on_refresh_clicked)
         self.sidebar.quick_create_clicked.connect(self.on_quick_create_clicked)
+        self.sidebar.pinned_panels_manager_clicked.connect(self.show_pinned_panels_manager)
         main_layout.addWidget(self.sidebar)
 
     def load_categories(self, categories):
@@ -1637,7 +1638,7 @@ class MainWindow(QMainWindow):
                     config_manager=self.config_manager,
                     pinned_panels_manager=self.controller.pinned_panels_manager,
                     main_window=self,
-                    parent=self
+                    parent=None  # Sin parent para que sea ventana independiente
                 )
 
                 # Conectar señales

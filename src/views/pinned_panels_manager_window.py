@@ -58,6 +58,12 @@ class PinnedPanelsManagerWindow(QWidget):
         self.setWindowTitle("Gestion de Paneles Anclados")
         self.setMinimumSize(900, 600)
 
+        # Configurar como ventana independiente
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowStaysOnTopHint
+        )
+
         # Layout principal
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)

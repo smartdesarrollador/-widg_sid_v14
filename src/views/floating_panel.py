@@ -1,7 +1,7 @@
 """
 Floating Panel Window - Independent window for displaying category items
 """
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QPushButton, QComboBox
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QPushButton, QComboBox, QMenu
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QEvent, QTimer
 from PyQt6.QtGui import QFont, QCursor
 import sys
@@ -158,6 +158,22 @@ class FloatingPanel(QWidget):
         self.header_label.setStyleSheet(self.theme.get_label_style('title'))
         self.header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_layout.addWidget(self.header_label)
+
+        # Filter badge (shows number of active filters)
+        self.filter_badge = QLabel()
+        self.filter_badge.setVisible(False)
+        self.filter_badge.setStyleSheet("""
+            QLabel {
+                background-color: #ff6b00;
+                color: white;
+                border-radius: 10px;
+                padding: 2px 8px;
+                font-size: 9pt;
+                font-weight: bold;
+            }
+        """)
+        self.filter_badge.setToolTip("Filtros activos")
+        self.header_layout.addWidget(self.filter_badge)
 
         # Pin button
         self.pin_button = QPushButton("📌")
@@ -925,6 +941,9 @@ class FloatingPanel(QWidget):
 
         self.display_items_and_lists(filtered_items, filtered_lists)
 
+        # Update filter badge when search changes
+        self.update_filter_badge()
+
     def on_filters_changed(self, filters: dict):
         """Handle cuando cambian los filtros avanzados"""
         logger.info(f"Filters changed: {filters}")
@@ -933,6 +952,9 @@ class FloatingPanel(QWidget):
         # Re-aplicar búsqueda y filtros
         current_query = self.search_bar.search_input.text()
         self.on_search_changed(current_query)
+
+        # Update filter badge
+        self.update_filter_badge()
 
         # AUTO-UPDATE: Trigger panel state save with new filters
         logger.debug(f"[AUTO-SAVE CHECK] is_pinned={self.is_pinned}, panel_id={self.panel_id}, config_manager={self.config_manager is not None}")
@@ -951,6 +973,9 @@ class FloatingPanel(QWidget):
         current_query = self.search_bar.search_input.text()
         self.on_search_changed(current_query)
 
+        # Update filter badge
+        self.update_filter_badge()
+
         # AUTO-UPDATE: Trigger panel state save with cleared filters
         if self.is_pinned and self.panel_id and self.config_manager:
             self.update_timer.start(self.update_delay_ms)
@@ -966,6 +991,9 @@ class FloatingPanel(QWidget):
         current_query = self.search_bar.search_input.text()
         self.on_search_changed(current_query)
 
+        # Update filter badge
+        self.update_filter_badge()
+
         # AUTO-UPDATE: Trigger panel state save with new state filter
         logger.debug(f"[AUTO-SAVE CHECK] is_pinned={self.is_pinned}, panel_id={self.panel_id}, config_manager={self.config_manager is not None}")
         if self.is_pinned and self.panel_id and self.config_manager:
@@ -973,6 +1001,40 @@ class FloatingPanel(QWidget):
             logger.info(f"[AUTO-SAVE] State filter change triggered auto-save timer ({self.update_delay_ms}ms)")
         else:
             logger.warning(f"[AUTO-SAVE] Skipped - panel not ready for auto-save")
+
+    def update_filter_badge(self):
+        """Actualizar badge de filtros activos en el header"""
+        filter_count = 0
+
+        # Contar filtros avanzados activos
+        if self.current_filters:
+            filter_count += len(self.current_filters)
+
+        # Contar filtro de estado (si no es 'normal')
+        if self.current_state_filter != "normal":
+            filter_count += 1
+
+        # Contar búsqueda activa
+        if hasattr(self, 'search_bar') and self.search_bar:
+            if hasattr(self.search_bar, 'search_input'):
+                search_text = self.search_bar.search_input.text().strip()
+                if search_text:
+                    filter_count += 1
+
+        # Mostrar/ocultar badge según la cantidad de filtros
+        if filter_count > 0:
+            self.filter_badge.setText(f"🔍 {filter_count}")
+            self.filter_badge.setVisible(True)
+            tooltip_parts = []
+            if self.current_filters:
+                tooltip_parts.append(f"{len(self.current_filters)} filtro(s) avanzado(s)")
+            if self.current_state_filter != "normal":
+                tooltip_parts.append(f"Estado: {self.current_state_filter}")
+            if hasattr(self, 'search_bar') and self.search_bar and self.search_bar.search_input.text().strip():
+                tooltip_parts.append(f"Búsqueda activa")
+            self.filter_badge.setToolTip(" | ".join(tooltip_parts))
+        else:
+            self.filter_badge.setVisible(False)
 
     def filter_items_by_state(self, items):
         """Filtrar items por estado (activo/archivado)
@@ -1129,6 +1191,128 @@ class FloatingPanel(QWidget):
                 if self.config_manager:
                     self.config_manager.set_setting('panel_width', self.width())
                 event.accept()
+
+    def contextMenuEvent(self, event):
+        """Mostrar menú contextual en panel anclado con click derecho"""
+        if not self.is_pinned:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {self.theme.get_color('background_mid')};
+                color: {self.theme.get_color('text_primary')};
+                border: 2px solid {self.theme.get_color('primary')};
+                border-radius: 8px;
+                padding: 5px;
+            }}
+            QMenu::item {{
+                padding: 8px 25px;
+                border-radius: 4px;
+            }}
+            QMenu::item:selected {{
+                background-color: {self.theme.get_color('primary')};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background: {self.theme.get_color('surface')};
+                margin: 5px 10px;
+            }}
+        """)
+
+        # Acciones de filtros
+        save_filters_action = menu.addAction("💾 Guardar filtros actuales")
+        save_filters_action.triggered.connect(self._save_panel_state_to_db)
+
+        clear_filters_action = menu.addAction("🧹 Limpiar todos los filtros")
+        clear_filters_action.triggered.connect(self._clear_all_filters)
+
+        menu.addSeparator()
+
+        # Acciones de panel
+        manager_action = menu.addAction("📍 Abrir gestor de paneles")
+        manager_action.triggered.connect(self._open_panels_manager)
+
+        customize_action = menu.addAction("✏️ Personalizar panel")
+        customize_action.triggered.connect(self.on_config_clicked)
+
+        menu.addSeparator()
+
+        # Info
+        info_action = menu.addAction("ℹ️ Información del panel")
+        info_action.triggered.connect(self._show_panel_info)
+
+        menu.exec(event.globalPos())
+
+    def _clear_all_filters(self):
+        """Limpiar todos los filtros del panel"""
+        # Limpiar filtros avanzados
+        self.on_filters_cleared()
+
+        # Restablecer filtro de estado a "normal"
+        if hasattr(self, 'state_filter_combo'):
+            for i in range(self.state_filter_combo.count()):
+                if self.state_filter_combo.itemData(i) == "normal":
+                    self.state_filter_combo.setCurrentIndex(i)
+                    break
+
+        # Limpiar texto de búsqueda
+        if hasattr(self, 'search_bar') and self.search_bar:
+            if hasattr(self.search_bar, 'search_input'):
+                self.search_bar.search_input.clear()
+
+        logger.info("All filters cleared via context menu")
+
+    def _open_panels_manager(self):
+        """Abrir ventana de gestión de paneles"""
+        # Buscar MainWindow y llamar a show_pinned_panels_manager()
+        if self.main_window and hasattr(self.main_window, 'show_pinned_panels_manager'):
+            self.main_window.show_pinned_panels_manager()
+        else:
+            logger.warning("Cannot open panels manager - main_window reference not available")
+
+    def _show_panel_info(self):
+        """Mostrar información del panel"""
+        from PyQt6.QtWidgets import QMessageBox
+
+        # Contar filtros activos
+        filter_count = 0
+        if self.current_filters:
+            filter_count += len(self.current_filters)
+        if self.current_state_filter != "normal":
+            filter_count += 1
+        if hasattr(self, 'search_bar') and self.search_bar and self.search_bar.search_input.text().strip():
+            filter_count += 1
+
+        # Construir mensaje de información
+        category_name = self.current_category.name if self.current_category else 'N/A'
+        panel_name = self.custom_name or category_name
+
+        info_text = f"""
+        <h3>📍 Información del Panel</h3>
+        <table style="width: 100%;">
+            <tr><td><b>ID:</b></td><td>{self.panel_id if self.panel_id else 'No guardado'}</td></tr>
+            <tr><td><b>Nombre:</b></td><td>{panel_name}</td></tr>
+            <tr><td><b>Categoría:</b></td><td>{category_name}</td></tr>
+            <tr><td><b>Estado:</b></td><td>{'📍 Anclado' if self.is_pinned else 'Flotante'}</td></tr>
+            <tr><td><b>Filtros activos:</b></td><td>{filter_count}</td></tr>
+            <tr><td><b>Items visibles:</b></td><td>{len(self.visible_items)}/{len(self.all_items)}</td></tr>
+        </table>
+        """
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Información del Panel")
+        msg_box.setText(info_text)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setStyleSheet(f"""
+            QMessageBox {{
+                background-color: {self.theme.get_color('background_mid')};
+            }}
+            QLabel {{
+                color: {self.theme.get_color('text_primary')};
+            }}
+        """)
+        msg_box.exec()
 
     def toggle_filters_window(self):
         """Abrir/cerrar la ventana de filtros avanzados"""
