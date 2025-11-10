@@ -63,12 +63,13 @@ class LoginDialog(QDialog):
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setPlaceholderText("Ingresa tu contraseña...")
+        self.password_input.setMinimumHeight(40)  # Aumentar altura para mejor visibilidad
         self.password_input.returnPressed.connect(self.login)
         password_container.addWidget(self.password_input)
 
         # Show/hide button
         self.show_password_btn = QPushButton("👁")
-        self.show_password_btn.setFixedSize(35, 35)
+        self.show_password_btn.setFixedSize(40, 40)  # Ajustado para alinearse con el campo
         self.show_password_btn.setToolTip("Mostrar/Ocultar contraseña")
         self.show_password_btn.clicked.connect(self.toggle_password_visibility)
         password_container.addWidget(self.show_password_btn)
