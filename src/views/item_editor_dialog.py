@@ -6,7 +6,7 @@ Dialog for creating and editing items
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QTextEdit, QComboBox, QPushButton, QFormLayout, QMessageBox, QCheckBox,
-    QFrame, QScrollArea, QFileDialog, QGroupBox
+    QFrame, QScrollArea, QFileDialog, QGroupBox, QWidget
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -191,8 +191,47 @@ class ItemEditorDialog(QDialog):
 
         # Main layout
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create scroll area for form content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: #2d2d2d;
+                width: 12px;
+                border-radius: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #5a5a5a;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #007acc;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+        """)
+
+        # Create container widget for scroll area
+        scroll_container = QWidget()
+        scroll_container_layout = QVBoxLayout(scroll_container)
+        scroll_container_layout.setSpacing(15)
+        scroll_container_layout.setContentsMargins(20, 20, 20, 20)
 
         # Form layout
         form_layout = QFormLayout()
@@ -229,13 +268,13 @@ class ItemEditorDialog(QDialog):
                 self.tag_group_selector.tags_changed.connect(self.on_tag_group_changed)
 
                 # Create scroll area for tag group selector
-                scroll_area = QScrollArea()
-                scroll_area.setWidget(self.tag_group_selector)
-                scroll_area.setWidgetResizable(True)
-                scroll_area.setFixedHeight(120)  # Fixed height with scroll
-                scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-                scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-                scroll_area.setStyleSheet("""
+                tag_scroll_area = QScrollArea()
+                tag_scroll_area.setWidget(self.tag_group_selector)
+                tag_scroll_area.setWidgetResizable(True)
+                tag_scroll_area.setFixedHeight(120)  # Fixed height with scroll
+                tag_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                tag_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                tag_scroll_area.setStyleSheet("""
                     QScrollArea {
                         border: 1px solid #3d3d3d;
                         border-radius: 4px;
@@ -259,7 +298,7 @@ class ItemEditorDialog(QDialog):
                     }
                 """)
 
-                form_layout.addRow("", scroll_area)
+                form_layout.addRow("", tag_scroll_area)
             except Exception as e:
                 logger.warning(f"Could not initialize TagGroupSelector: {e}")
                 self.tag_group_selector = None
@@ -400,17 +439,28 @@ class ItemEditorDialog(QDialog):
         )
         form_layout.addRow("", self.archived_checkbox)
 
-        main_layout.addLayout(form_layout)
+        # Add form to scroll container
+        scroll_container_layout.addLayout(form_layout)
 
         # Required fields note
         note_label = QLabel("* Campos requeridos")
         note_label.setStyleSheet("color: #666666; font-size: 9pt;")
-        main_layout.addWidget(note_label)
+        scroll_container_layout.addWidget(note_label)
 
-        # Spacer
-        main_layout.addStretch()
+        # Spacer within scroll area
+        scroll_container_layout.addStretch()
 
-        # Buttons layout
+        # Assign container to scroll area
+        scroll_area.setWidget(scroll_container)
+
+        # Add scroll area to main layout
+        main_layout.addWidget(scroll_area)
+
+        # Buttons container (outside scroll area, fixed at bottom)
+        buttons_container = QWidget()
+        buttons_container_layout = QVBoxLayout(buttons_container)
+        buttons_container_layout.setContentsMargins(20, 10, 20, 20)
+
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(10)
 
@@ -427,7 +477,11 @@ class ItemEditorDialog(QDialog):
         self.save_button.clicked.connect(self.on_save)
         buttons_layout.addWidget(self.save_button)
 
-        main_layout.addLayout(buttons_layout)
+        # Add buttons layout to buttons container
+        buttons_container_layout.addLayout(buttons_layout)
+
+        # Add buttons container to main layout
+        main_layout.addWidget(buttons_container)
 
     def _create_file_selector_section(self, form_layout):
         """Create file selector section for PATH items"""
