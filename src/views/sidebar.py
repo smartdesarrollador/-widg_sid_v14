@@ -219,7 +219,7 @@ class Sidebar(QWidget):
         main_layout.addWidget(self.notebook_button)
 
         # Category Filter button (FC)
-        self.category_filter_button = QPushButton("📦")
+        self.category_filter_button = QPushButton("📂")
         self.category_filter_button.setFixedSize(70, 40)
         self.category_filter_button.setToolTip("Filtro de Categorías")
         self.category_filter_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -481,7 +481,7 @@ class Sidebar(QWidget):
         main_layout.addWidget(self.dashboard_button)
 
         # Pinned Panels Manager button
-        self.pinned_panels_button = QPushButton("📍")
+        self.pinned_panels_button = QPushButton("📌")
         self.pinned_panels_button.setFixedSize(70, 45)
         self.pinned_panels_button.setToolTip("Gestión de Paneles Anclados (Ctrl+Shift+P)")
         self.pinned_panels_button.setCursor(Qt.CursorShape.PointingHandCursor)
