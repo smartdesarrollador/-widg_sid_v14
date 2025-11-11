@@ -1,7 +1,7 @@
 """
 Floating Panel Window - Independent window for displaying category items
 """
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QPushButton, QComboBox, QMenu
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QPushButton, QComboBox, QMenu, QSizePolicy
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QEvent, QTimer
 from PyQt6.QtGui import QFont, QCursor
 import sys
@@ -410,7 +410,7 @@ class FloatingPanel(QWidget):
         # Scroll area for items
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setStyleSheet(f"""
             QScrollArea {{
@@ -423,6 +423,11 @@ class FloatingPanel(QWidget):
 
         # Container for items
         self.items_container = QWidget()
+        # Configurar política de tamaño para permitir expansión horizontal
+        self.items_container.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding,  # Horizontal: puede expandirse más allá del tamaño mínimo
+            QSizePolicy.Policy.Preferred  # Vertical: tamaño preferido
+        )
         self.items_layout = QVBoxLayout(self.items_container)
         self.items_layout.setContentsMargins(0, 0, 0, 0)
         self.items_layout.setSpacing(0)

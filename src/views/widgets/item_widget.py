@@ -1,7 +1,7 @@
 """
 Item Button Widget
 """
-from PyQt6.QtWidgets import QPushButton, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame
+from PyQt6.QtWidgets import QPushButton, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QSizePolicy
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt6.QtGui import QFont
 import sys
@@ -91,11 +91,12 @@ class ItemButton(QFrame):
         """Initialize button UI"""
         # Set frame properties
         self.setMinimumHeight(50)
+        self.setMinimumWidth(300)  # Ancho mínimo para activar scroll horizontal si es necesario
         # Remove maximum height to allow widget to grow with content
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(
-            self.sizePolicy().horizontalPolicy(),
-            self.sizePolicy().Policy.MinimumExpanding
+            QSizePolicy.Policy.Expanding,  # Horizontal: expandir pero respetar mínimo
+            QSizePolicy.Policy.MinimumExpanding  # Vertical: expandir verticalmente
         )
 
         # Set tooltip simple - solo mostrar el contenido del item
