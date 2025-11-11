@@ -98,70 +98,17 @@ class ItemButton(QFrame):
             self.sizePolicy().Policy.MinimumExpanding
         )
 
-        # Set tooltip with description and content info
-        tooltip_parts = []
-
-        # Add description if available
-        if hasattr(self.item, 'description') and self.item.description:
-            tooltip_parts.append(self.item.description)
-
-        # Add content preview for non-sensitive items
+        # Set tooltip simple - solo mostrar el contenido del item
+        # La información detallada está disponible en el panel de detalles
         if not self.item.is_sensitive and self.item.content:
-            content_preview = self.item.content[:100]  # First 100 chars
-            if len(self.item.content) > 100:
+            # Para items no sensibles, mostrar preview del contenido
+            content_preview = self.item.content[:150]  # First 150 chars
+            if len(self.item.content) > 150:
                 content_preview += "..."
-            if tooltip_parts:  # If there's already a description, add separator
-                tooltip_parts.append("\n---\n")
-            tooltip_parts.append(f"Contenido: {content_preview}")
-
-        # Add item type
-        if tooltip_parts:
-            tooltip_parts.append("\n")
-        tooltip_parts.append(f"Tipo: {self.item.type.value.upper()}")
-
-        # Add file metadata if available (for PATH items with file info)
-        if (self.item.type == ItemType.PATH and
-            hasattr(self.item, 'file_hash') and self.item.file_hash):
-            tooltip_parts.append("\n\n📦 Archivo Guardado:")
-
-            # Original filename
-            if hasattr(self.item, 'original_filename') and self.item.original_filename:
-                tooltip_parts.append(f"\n📄 Nombre: {self.item.original_filename}")
-
-            # File size
-            if hasattr(self.item, 'file_size') and self.item.file_size:
-                # Use Item's get_formatted_file_size if available
-                if hasattr(self.item, 'get_formatted_file_size'):
-                    size_str = self.item.get_formatted_file_size()
-                else:
-                    # Fallback to simple formatting
-                    size = self.item.file_size
-                    if size < 1024:
-                        size_str = f"{size} B"
-                    elif size < 1024 * 1024:
-                        size_str = f"{size / 1024:.2f} KB"
-                    elif size < 1024 * 1024 * 1024:
-                        size_str = f"{size / (1024 * 1024):.2f} MB"
-                    else:
-                        size_str = f"{size / (1024 * 1024 * 1024):.2f} GB"
-                tooltip_parts.append(f"\n💾 Tamaño: {size_str}")
-
-            # File type with icon
-            if hasattr(self.item, 'file_type') and self.item.file_type:
-                # Get icon if method available
-                if hasattr(self.item, 'get_file_type_icon'):
-                    icon = self.item.get_file_type_icon()
-                    tooltip_parts.append(f"\n{icon} Tipo: {self.item.file_type}")
-                else:
-                    tooltip_parts.append(f"\n📎 Tipo: {self.item.file_type}")
-
-            # File extension
-            if hasattr(self.item, 'file_extension') and self.item.file_extension:
-                tooltip_parts.append(f"\n🔖 Extensión: {self.item.file_extension}")
-
-        # Set the complete tooltip
-        if tooltip_parts:
-            self.setToolTip(''.join(tooltip_parts))
+            self.setToolTip(content_preview)
+        else:
+            # Para items sensibles, solo mostrar el label
+            self.setToolTip(self.item.label)
 
         # Main layout
         main_layout = QHBoxLayout(self)
