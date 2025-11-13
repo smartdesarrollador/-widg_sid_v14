@@ -401,12 +401,18 @@ class MainWindow(QMainWindow):
         logger.info(f"Panel positioned at initial position next to sidebar")
 
     def on_global_search_clicked(self):
-        """Handle global search button click - show global search panel"""
+        """Handle global search button click - toggle global search panel"""
         try:
             logger.info("Global search button clicked")
 
             if not self.controller:
                 logger.error("No controller available")
+                return
+
+            # TOGGLE BEHAVIOR: If panel exists and is visible (not pinned), close it
+            if self.global_search_panel and not self.global_search_panel.is_pinned and self.global_search_panel.isVisible():
+                logger.debug("Global search panel is visible - closing it (toggle)")
+                self.global_search_panel.close()
                 return
 
             # Create global search panel if it doesn't exist OR if the existing one is pinned
