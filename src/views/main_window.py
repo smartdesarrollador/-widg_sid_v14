@@ -1465,6 +1465,11 @@ class MainWindow(QMainWindow):
                     panel_id = panel_data['id']
                     category_id = panel_data['category_id']
 
+                    # IMPORTANTE: Skip panels without category_id (those are global search panels)
+                    if category_id is None:
+                        logger.debug(f"Skipping panel {panel_id} - no category_id (global search panel)")
+                        continue
+
                     # Get category
                     category = self.controller.get_category(str(category_id))
                     if not category:
@@ -1543,18 +1548,22 @@ class MainWindow(QMainWindow):
 
     def restore_pinned_global_search_panels(self):
         """Restaurar paneles de búsqueda global anclados desde la BD"""
+        logger.info("=== [GLOBAL SEARCH RESTORE] Starting restore_pinned_global_search_panels() ===")
+
         if not self.controller:
-            logger.warning("No controller available - skipping global search panels restoration")
+            logger.warning("[GLOBAL SEARCH RESTORE] No controller available - skipping global search panels restoration")
             return
 
         try:
+            logger.info("[GLOBAL SEARCH RESTORE] Calling get_global_search_panels(active_only=True)...")
             global_panels_data = self.controller.pinned_panels_manager.get_global_search_panels(active_only=True)
+            logger.info(f"[GLOBAL SEARCH RESTORE] Retrieved {len(global_panels_data)} panels from database")
 
             if not global_panels_data:
-                logger.info("No active global search panels to restore")
+                logger.info("[GLOBAL SEARCH RESTORE] No active global search panels to restore")
                 return
 
-            logger.info(f"Restoring {len(global_panels_data)} global search panels...")
+            logger.info(f"[GLOBAL SEARCH RESTORE] Restoring {len(global_panels_data)} global search panels...")
 
             for panel_data in global_panels_data:
                 try:
@@ -1564,7 +1573,7 @@ class MainWindow(QMainWindow):
                     # Crear nuevo panel de búsqueda global
                     from views.global_search_panel import GlobalSearchPanel
                     restored_panel = GlobalSearchPanel(
-                        db_manager=self.controller.db_manager if self.controller else None,
+                        db_manager=self.config_manager.db if self.config_manager else None,
                         config_manager=self.config_manager,
                         list_controller=self.controller.list_controller if self.controller else None,
                         parent=self  # Conectar como hijo de MainWindow para señales
@@ -1614,19 +1623,19 @@ class MainWindow(QMainWindow):
                     if config['search_query']:
                         restored_panel._perform_search()
 
-                    # Restaurar estado minimizado
-                    if config['is_minimized']:
-                        restored_panel.is_minimized = False  # Asegurar que empieza en False
-                        restored_panel.toggle_minimize()
-
                     # Agregar a lista
                     self.pinned_global_search_panels.append(restored_panel)
 
                     # Actualizar last_opened en BD
                     self.controller.pinned_panels_manager.mark_panel_opened(config['panel_id'])
 
-                    # Mostrar panel
+                    # IMPORTANTE: Mostrar panel ANTES de minimizar (si no, el estado minimizado no se mantiene)
                     restored_panel.show()
+
+                    # Restaurar estado minimizado (DESPUÉS de show() para que funcione correctamente)
+                    if config['is_minimized']:
+                        restored_panel.is_minimized = False  # Asegurar que empieza en False
+                        restored_panel.toggle_minimize()
 
                     logger.info(f"Global search panel {config['panel_id']} ({config['custom_name']}) restored successfully")
 

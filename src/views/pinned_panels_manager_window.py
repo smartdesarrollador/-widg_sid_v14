@@ -726,9 +726,16 @@ class PinnedPanelsManagerWindow(QWidget):
             if not self.main_window:
                 return False
 
+            # Verificar en paneles de categoría (FloatingPanel)
             for panel in self.main_window.pinned_panels:
                 if panel.panel_id == panel_id:
                     return True
+
+            # IMPORTANTE: También verificar en paneles de búsqueda global (GlobalSearchPanel)
+            if hasattr(self.main_window, 'pinned_global_search_panels'):
+                for panel in self.main_window.pinned_global_search_panels:
+                    if panel.panel_id == panel_id:
+                        return True
 
             return False
         except:
@@ -743,9 +750,10 @@ class PinnedPanelsManagerWindow(QWidget):
                 logger.warning("[PANEL MANAGER] No main_window reference available")
                 return
 
+            # Buscar en paneles de categoría (FloatingPanel)
             for panel in self.main_window.pinned_panels:
                 if panel.panel_id == panel_id:
-                    logger.info(f"[PANEL MANAGER] Found panel {panel_id}, focusing...")
+                    logger.info(f"[PANEL MANAGER] Found category panel {panel_id}, focusing...")
 
                     # Si está minimizado, restaurar primero
                     if panel.is_minimized:
@@ -763,7 +771,34 @@ class PinnedPanelsManagerWindow(QWidget):
                     panel.setFocus()
 
                     logger.info(f"[PANEL MANAGER] Panel {panel_id} focused successfully")
-                    break
+                    return
+
+            # IMPORTANTE: También buscar en paneles de búsqueda global (GlobalSearchPanel)
+            if hasattr(self.main_window, 'pinned_global_search_panels'):
+                for panel in self.main_window.pinned_global_search_panels:
+                    if panel.panel_id == panel_id:
+                        logger.info(f"[PANEL MANAGER] Found global search panel {panel_id}, focusing...")
+
+                        # Si está minimizado, restaurar primero
+                        if panel.is_minimized:
+                            logger.info(f"[PANEL MANAGER] Panel {panel_id} is minimized, restoring...")
+                            panel.toggle_minimize()
+
+                        # Mostrar el panel si está oculto
+                        if not panel.isVisible():
+                            logger.info(f"[PANEL MANAGER] Panel {panel_id} is hidden, showing...")
+                            panel.show()
+
+                        # Traer al frente y enfocar
+                        panel.raise_()
+                        panel.activateWindow()
+                        panel.setFocus()
+
+                        logger.info(f"[PANEL MANAGER] Panel {panel_id} focused successfully")
+                        return
+
+            logger.warning(f"[PANEL MANAGER] Panel {panel_id} not found in open panels")
+
         except Exception as e:
             logger.error(f"[PANEL MANAGER] Error focusing panel: {e}", exc_info=True)
 
