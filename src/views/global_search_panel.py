@@ -560,20 +560,33 @@ class GlobalSearchPanel(QWidget):
         # Clear search bar
         self.search_bar.clear_search()
 
-        # Display all items initially
-        self.display_items(self.all_items)
+        # Display only first 100 items initially (for performance)
+        # When user searches/filters, all matching items will be shown
+        initial_display_limit = 100
+        items_to_display = self.all_items[:initial_display_limit]
+        self.display_items(items_to_display, total_count=len(self.all_items))
 
         # Show the window
         self.show()
         self.raise_()
         self.activateWindow()
 
-    def display_items(self, items):
-        """Display a list of items"""
+    def display_items(self, items, total_count=None):
+        """Display a list of items
+
+        Args:
+            items: List of items to display
+            total_count: Total number of items available (if showing limited results)
+        """
         logger.info(f"Displaying {len(items)} items")
 
         # Actualizar título con contador
-        self.header_label.setText(f"🌐 Búsqueda Global ({len(items)} items)")
+        if total_count and total_count > len(items):
+            # Showing limited results
+            self.header_label.setText(f"🌐 Búsqueda Global ({len(items)} de {total_count} items)")
+        else:
+            # Showing all results
+            self.header_label.setText(f"🌐 Búsqueda Global ({len(items)} items)")
 
         # Clear existing items
         self.clear_items()
@@ -584,6 +597,38 @@ class GlobalSearchPanel(QWidget):
             item_button = ItemButton(item, show_category=True)  # show_category=True for global search
             item_button.item_clicked.connect(self.on_item_clicked)
             self.items_layout.insertWidget(self.items_layout.count() - 1, item_button)
+
+        # Add info message if showing limited results
+        if total_count and total_count > len(items):
+            info_widget = QWidget()
+            info_widget.setStyleSheet("""
+                QWidget {
+                    background-color: #2d2d2d;
+                    border: 1px solid #4d4d4d;
+                    border-radius: 4px;
+                    padding: 10px;
+                    margin: 5px;
+                }
+            """)
+            info_layout = QVBoxLayout(info_widget)
+            info_layout.setContentsMargins(10, 10, 10, 10)
+
+            info_label = QLabel(
+                f"ℹ️ Mostrando los primeros {len(items)} items de {total_count} totales.\n"
+                f"💡 Usa la búsqueda o filtros para encontrar items específicos."
+            )
+            info_label.setWordWrap(True)
+            info_label.setStyleSheet("""
+                QLabel {
+                    color: #aaaaaa;
+                    font-size: 10pt;
+                    background-color: transparent;
+                    border: none;
+                }
+            """)
+            info_layout.addWidget(info_label)
+
+            self.items_layout.insertWidget(self.items_layout.count() - 1, info_widget)
 
         logger.info(f"Successfully added {len(items)} item buttons to layout")
 
@@ -666,7 +711,18 @@ class GlobalSearchPanel(QWidget):
 
             filtered_items = search_results
 
-        self.display_items(filtered_items)
+        # Apply initial display limit if no search/filters are active
+        # (for performance with large datasets)
+        if not query.strip() and not self.current_filters and self.current_state_filter == 'normal':
+            # No search, no advanced filters, no state filter -> limit to 100 items
+            initial_display_limit = 100
+            if len(filtered_items) > initial_display_limit:
+                self.display_items(filtered_items[:initial_display_limit], total_count=len(filtered_items))
+            else:
+                self.display_items(filtered_items)
+        else:
+            # Search or filters active -> show all results
+            self.display_items(filtered_items)
 
         # Update filter badge when search changes
         self.update_filter_badge()
