@@ -409,18 +409,22 @@ class MainWindow(QMainWindow):
                 logger.error("No controller available")
                 return
 
-            # Create global search panel if it doesn't exist
-            if not self.global_search_panel:
+            # Create global search panel if it doesn't exist OR if the existing one is pinned
+            # Similar to FloatingPanel behavior: pinned panels don't block creating new ones
+            if not self.global_search_panel or (self.global_search_panel and self.global_search_panel.is_pinned):
                 # Get db_manager from controller's config_manager
                 db_manager = self.config_manager.db if self.config_manager else None
                 self.global_search_panel = GlobalSearchPanel(
                     db_manager=db_manager,
                     config_manager=self.config_manager,
-                    list_controller=self.controller.list_controller
+                    list_controller=self.controller.list_controller,
+                    parent=self
                 )
                 self.global_search_panel.item_clicked.connect(self.on_item_clicked)
                 self.global_search_panel.window_closed.connect(self.on_global_search_panel_closed)
-                logger.debug("Global search panel created")
+                # Conectar señal de cambio de estado de pin
+                self.global_search_panel.pin_state_changed.connect(self.on_global_search_pin_state_changed)
+                logger.debug("Global search panel created (new or replacing pinned one)")
 
             # Load all items
             self.global_search_panel.load_all_items()
@@ -444,6 +448,21 @@ class MainWindow(QMainWindow):
         if self.global_search_panel:
             self.global_search_panel.deleteLater()
             self.global_search_panel = None
+
+    def on_global_search_pin_state_changed(self, is_pinned: bool):
+        """Handle global search panel pin state change via signal"""
+        panel = self.sender()  # Get the panel that emitted the signal
+        if is_pinned:
+            self.on_global_search_panel_pinned(panel)
+        else:
+            self.on_global_search_panel_unpinned(panel)
+
+    def on_restored_global_search_panel_closed(self, panel):
+        """Handle when a restored global search panel is closed"""
+        logger.info(f"Restored global search panel {panel.panel_id} closed")
+        if panel in self.pinned_global_search_panels:
+            self.pinned_global_search_panels.remove(panel)
+        panel.deleteLater()
 
     def on_favorites_clicked(self):
         """Handle favorites button click - show favorites panel"""
@@ -1548,8 +1567,13 @@ class MainWindow(QMainWindow):
                         db_manager=self.controller.db_manager if self.controller else None,
                         config_manager=self.config_manager,
                         list_controller=self.controller.list_controller if self.controller else None,
-                        parent=None  # Ventana independiente
+                        parent=self  # Conectar como hijo de MainWindow para señales
                     )
+
+                    # Conectar señales
+                    restored_panel.item_clicked.connect(self.on_item_clicked)
+                    restored_panel.window_closed.connect(lambda p=restored_panel: self.on_restored_global_search_panel_closed(p))
+                    restored_panel.pin_state_changed.connect(self.on_global_search_pin_state_changed)
 
                     # Restaurar propiedades
                     restored_panel.panel_id = config['panel_id']
@@ -1583,7 +1607,10 @@ class MainWindow(QMainWindow):
                     restored_panel.update_pin_button_style()
                     restored_panel.update_filter_badge()
 
-                    # Realizar búsqueda inicial si hay query
+                    # IMPORTANTE: Cargar todos los items primero
+                    restored_panel.load_all_items()
+
+                    # Realizar búsqueda inicial si hay query (después de cargar items)
                     if config['search_query']:
                         restored_panel._perform_search()
 
@@ -1794,6 +1821,12 @@ class MainWindow(QMainWindow):
         if panel not in self.pinned_global_search_panels:
             self.pinned_global_search_panels.append(panel)
             logger.info(f"Added global search panel {panel.panel_id} to pinned list")
+
+            # IMPORTANTE: Limpiar self.global_search_panel para permitir crear nuevos paneles flotantes
+            # Similar al comportamiento de FloatingPanel
+            if self.global_search_panel == panel:
+                self.global_search_panel = None
+                logger.debug("Cleared self.global_search_panel reference after pinning")
 
             # Actualizar gestor de paneles si está abierto
             if hasattr(self, 'pinned_panels_window') and self.pinned_panels_window and self.pinned_panels_window.isVisible():

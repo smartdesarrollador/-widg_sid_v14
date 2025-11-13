@@ -30,6 +30,9 @@ class GlobalSearchPanel(QWidget):
     # Signal emitted when window is closed
     window_closed = pyqtSignal()
 
+    # Signal emitted when pin state changes
+    pin_state_changed = pyqtSignal(bool)  # True = pinned, False = unpinned
+
     def __init__(self, db_manager=None, config_manager=None, list_controller=None, parent=None):
         super().__init__(parent)
         self.db_manager = db_manager
@@ -53,9 +56,11 @@ class GlobalSearchPanel(QWidget):
         self.panel_name = "Búsqueda Global"
         self.panel_color = "#ff6b00"  # Color naranja por defecto
 
-        # Minimized state
+        # Minimized state (similar a FloatingPanel)
         self.is_minimized = False
-        self.original_height = 800
+        self.normal_height = None  # Altura normal antes de minimizar
+        self.normal_width = None  # Ancho normal antes de minimizar
+        self.normal_position = None  # Posición normal antes de minimizar
 
         # Pinned panels manager
         self.panels_manager = None
@@ -127,16 +132,16 @@ class GlobalSearchPanel(QWidget):
         main_layout.setSpacing(0)
 
         # Header with title and close button
-        header_widget = QWidget()
-        header_widget.setStyleSheet("""
+        self.header_widget = QWidget()
+        self.header_widget.setStyleSheet("""
             QWidget {
                 background-color: #252525;
                 border-radius: 6px 6px 0 0;
             }
         """)
-        header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(15, 10, 10, 10)
-        header_layout.setSpacing(5)
+        self.header_layout = QHBoxLayout(self.header_widget)
+        self.header_layout.setContentsMargins(15, 10, 10, 10)
+        self.header_layout.setSpacing(5)
 
         # Title
         self.header_label = QLabel("🌐 Búsqueda Global")
@@ -149,7 +154,7 @@ class GlobalSearchPanel(QWidget):
             }
         """)
         self.header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(self.header_label)
+        self.header_layout.addWidget(self.header_label)
 
         # Filter badge (shows number of active filters)
         self.filter_badge = QLabel()
@@ -165,7 +170,7 @@ class GlobalSearchPanel(QWidget):
             }
         """)
         self.filter_badge.setToolTip("Filtros activos")
-        header_layout.addWidget(self.filter_badge)
+        self.header_layout.addWidget(self.filter_badge)
 
         # Pin button
         self.pin_button = QPushButton()
@@ -173,7 +178,7 @@ class GlobalSearchPanel(QWidget):
         self.pin_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.pin_button.clicked.connect(self.toggle_pin)
         self.update_pin_button_style()
-        header_layout.addWidget(self.pin_button)
+        self.header_layout.addWidget(self.pin_button)
 
         # Minimize button (solo visible cuando está anclado)
         self.minimize_button = QPushButton("➖")
@@ -197,7 +202,7 @@ class GlobalSearchPanel(QWidget):
                 background-color: #2d2d2d;
             }
         """)
-        header_layout.addWidget(self.minimize_button)
+        self.header_layout.addWidget(self.minimize_button)
 
         # Config button (solo visible cuando está anclado)
         self.config_button = QPushButton("⚙️")
@@ -221,7 +226,7 @@ class GlobalSearchPanel(QWidget):
                 background-color: #2d2d2d;
             }
         """)
-        header_layout.addWidget(self.config_button)
+        self.header_layout.addWidget(self.config_button)
 
         # Close button
         close_button = QPushButton("✕")
@@ -246,19 +251,19 @@ class GlobalSearchPanel(QWidget):
             }
         """)
         close_button.clicked.connect(self.hide)
-        header_layout.addWidget(close_button)
+        self.header_layout.addWidget(close_button)
 
-        main_layout.addWidget(header_widget)
+        main_layout.addWidget(self.header_widget)
 
         # Botón para abrir ventana de filtros avanzados
-        filters_button_widget = QWidget()
-        filters_button_widget.setStyleSheet("""
+        self.filters_button_widget = QWidget()
+        self.filters_button_widget.setStyleSheet("""
             QWidget {
                 background-color: #2d2d2d;
                 border-bottom: 1px solid #3d3d3d;
             }
         """)
-        filters_button_layout = QHBoxLayout(filters_button_widget)
+        filters_button_layout = QHBoxLayout(self.filters_button_widget)
         filters_button_layout.setContentsMargins(8, 5, 8, 5)
         filters_button_layout.setSpacing(0)
 
@@ -394,7 +399,7 @@ class GlobalSearchPanel(QWidget):
         self.create_list_button.clicked.connect(self.on_create_list_clicked)
         filters_button_layout.addWidget(self.create_list_button)
 
-        main_layout.addWidget(filters_button_widget)
+        main_layout.addWidget(self.filters_button_widget)
 
         # Crear ventana flotante de filtros (oculta inicialmente)
         self.filters_window = AdvancedFiltersWindow(self)
@@ -408,11 +413,11 @@ class GlobalSearchPanel(QWidget):
         main_layout.addWidget(self.search_bar)
 
         # Scroll area for items
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setStyleSheet("""
             QScrollArea {
                 border: none;
                 background-color: #252525;
@@ -460,8 +465,8 @@ class GlobalSearchPanel(QWidget):
         self.items_layout.setSpacing(0)
         self.items_layout.addStretch()
 
-        scroll_area.setWidget(self.items_container)
-        main_layout.addWidget(scroll_area)
+        self.scroll_area.setWidget(self.items_container)
+        main_layout.addWidget(self.scroll_area)
 
     def load_all_items(self):
         """Load and display ALL items from ALL categories"""
@@ -716,13 +721,15 @@ class GlobalSearchPanel(QWidget):
     def update_pin_button_style(self):
         """Actualizar estilo del botón de pin según estado"""
         if self.is_pinned:
-            icon = "📌"
-            tooltip = "Panel anclado - Click para desanclar"
-            bg_color = self.panel_color
-        else:
+            # Cuando está anclado: pin inclinado con fondo verde (igual que FloatingPanel)
             icon = "📍"
+            tooltip = "Panel anclado - Click para desanclar"
+            bg_color = "rgba(0, 200, 0, 0.3)"
+        else:
+            # Cuando NO está anclado: pin recto con fondo gris (igual que FloatingPanel)
+            icon = "📌"
             tooltip = "Anclar este panel - Guardar configuración actual"
-            bg_color = "#3d3d3d"
+            bg_color = "rgba(255, 255, 255, 0.1)"
 
         self.pin_button.setText(icon)
         self.pin_button.setToolTip(tooltip)
@@ -735,10 +742,10 @@ class GlobalSearchPanel(QWidget):
                 font-size: 14pt;
             }}
             QPushButton:hover {{
-                background-color: {'#ff8533' if self.is_pinned else '#4d4d4d'};
+                background-color: {'rgba(0, 200, 0, 0.5)' if self.is_pinned else 'rgba(255, 255, 255, 0.2)'};
             }}
             QPushButton:pressed {{
-                background-color: {'#cc5500' if self.is_pinned else '#2d2d2d'};
+                background-color: {'rgba(0, 200, 0, 0.4)' if self.is_pinned else 'rgba(255, 255, 255, 0.3)'};
             }}
         """)
 
@@ -751,13 +758,13 @@ class GlobalSearchPanel(QWidget):
             self.config_button.setVisible(self.is_pinned)
 
     def toggle_pin(self):
-        """Alternar estado de anclado del panel"""
+        """Alternar estado de anclado del panel (igual que FloatingPanel)"""
         if self.is_pinned:
             # Desanclar panel
             self.unpin_panel()
         else:
-            # Anclar panel - mostrar diálogo de configuración
-            self.show_pin_configuration_dialog()
+            # Anclar panel directamente (sin diálogo, igual que FloatingPanel)
+            self.pin_panel()
 
     def show_pin_configuration_dialog(self):
         """Mostrar diálogo para configurar panel antes de anclar"""
@@ -918,7 +925,10 @@ class GlobalSearchPanel(QWidget):
 
             logger.info(f"Panel anclado exitosamente (ID: {panel_id})")
 
-            # Notificar a MainWindow si está disponible
+            # Emitir señal de cambio de estado (mejor práctica PyQt6)
+            self.pin_state_changed.emit(True)
+
+            # También notificar directamente a MainWindow si está disponible (compatibilidad)
             main_window = self.parent() if self.parent() else None
             # Buscar MainWindow en la jerarquía
             widget = self
@@ -975,7 +985,10 @@ class GlobalSearchPanel(QWidget):
 
             logger.info(f"Panel desanclado exitosamente (ID: {old_panel_id})")
 
-            # Notificar a MainWindow si está disponible
+            # Emitir señal de cambio de estado (mejor práctica PyQt6)
+            self.pin_state_changed.emit(False)
+
+            # También notificar directamente a MainWindow si está disponible (compatibilidad)
             widget = self
             while widget and not hasattr(widget, 'on_global_search_panel_unpinned'):
                 widget = widget.parent() if hasattr(widget, 'parent') and widget.parent() else None
@@ -1001,32 +1014,88 @@ class GlobalSearchPanel(QWidget):
             )
 
     def toggle_minimize(self):
-        """Alternar estado minimizado del panel"""
+        """Toggle panel minimize state (only for pinned panels) - IGUAL QUE FloatingPanel"""
         if not self.is_pinned:
-            logger.warning("Cannot minimize non-pinned panel")
-            return
+            logger.warning("Cannot minimize unpinned panel")
+            return  # Only allow minimize for pinned panels
+
+        self.is_minimized = not self.is_minimized
 
         if self.is_minimized:
-            # Restaurar
-            self.setFixedHeight(self.original_height)
-            self.scroll_area.setVisible(True)
-            if hasattr(self, 'filters_container'):
-                self.filters_container.setVisible(True)
-            self.minimize_button.setText("➖")
-            self.minimize_button.setToolTip("Minimizar panel")
-            self.is_minimized = False
-            logger.info(f"Panel {self.panel_id} restored from minimized state")
-        else:
-            # Minimizar
-            self.original_height = self.height()
-            self.setFixedHeight(60)  # Solo mostrar header
+            # Save current size and position
+            self.normal_height = self.height()
+            self.normal_width = self.width()
+            self.normal_position = self.pos()
+            logger.info(f"Minimizing panel - saving size: {self.normal_width}x{self.normal_height}, position: {self.normal_position}")
+
+            # Hide content widgets
+            self.filters_button_widget.setVisible(False)
+            self.search_bar.setVisible(False)
             self.scroll_area.setVisible(False)
-            if hasattr(self, 'filters_container'):
-                self.filters_container.setVisible(False)
-            self.minimize_button.setText("➕")
-            self.minimize_button.setToolTip("Restaurar panel")
-            self.is_minimized = True
-            logger.info(f"Panel {self.panel_id} minimized")
+
+            # Reduce header margins for compact look
+            self.header_layout.setContentsMargins(8, 3, 5, 3)
+
+            # CRITICAL: Remove size constraints temporarily to allow small size
+            self.setMinimumWidth(0)
+            self.setMinimumHeight(0)
+
+            # Resize to compact size (height: 32px, width: ~180px)
+            minimized_height = 32
+            minimized_width = 180
+            self.resize(minimized_width, minimized_height)
+
+            # Move to bottom of screen (al ras de la barra de tareas)
+            from PyQt6.QtWidgets import QApplication
+            screen = QApplication.primaryScreen()
+            if screen:
+                screen_geometry = screen.availableGeometry()
+                # Position al ras de la barra de tareas (5px margin)
+                new_x = self.x()  # Keep same X position
+                new_y = screen_geometry.bottom() - minimized_height - 5  # 5px margin - al ras de taskbar
+                self.move(new_x, new_y)
+                logger.info(f"Moved minimized panel to bottom: ({new_x}, {new_y})")
+
+            # Update button
+            self.minimize_button.setText("□")
+            self.minimize_button.setToolTip("Maximizar panel")
+            logger.info(f"Panel '{self.header_label.text()}' MINIMIZADO")
+        else:
+            # Restore content widgets
+            self.filters_button_widget.setVisible(True)
+            self.search_bar.setVisible(True)
+            self.scroll_area.setVisible(True)
+
+            # Restore header margins
+            self.header_layout.setContentsMargins(15, 10, 10, 10)
+
+            # CRITICAL: Restore size constraints
+            self.setMinimumWidth(300)
+            self.setMinimumHeight(400)
+
+            # Restore original size
+            if self.normal_height and self.normal_width:
+                self.resize(self.normal_width, self.normal_height)
+                logger.info(f"Restored panel size to: {self.normal_width}x{self.normal_height}")
+            else:
+                # Fallback: use default size
+                from PyQt6.QtWidgets import QApplication
+                screen = QApplication.primaryScreen()
+                if screen:
+                    screen_height = screen.availableGeometry().height()
+                    window_height = int(screen_height * 0.8)
+                    self.resize(self.panel_width, window_height)
+                    logger.info(f"Restored panel size to default: {self.panel_width}x{window_height}")
+
+            # Restore original position
+            if self.normal_position:
+                self.move(self.normal_position)
+                logger.info(f"Restored panel position to: {self.normal_position}")
+
+            # Update button
+            self.minimize_button.setText("−")
+            self.minimize_button.setToolTip("Minimizar panel")
+            logger.info(f"Panel '{self.header_label.text()}' MAXIMIZADO")
 
         # Guardar estado en BD
         if self.panel_id and self.panels_manager:
