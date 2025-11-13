@@ -1381,7 +1381,7 @@ class DBManager:
             query = """
                 SELECT p.*, c.name as category_name, c.icon as category_icon
                 FROM pinned_panels p
-                JOIN categories c ON p.category_id = c.id
+                LEFT JOIN categories c ON p.category_id = c.id
                 WHERE p.is_active = 1
                 ORDER BY p.last_opened DESC
             """
@@ -1390,7 +1390,7 @@ class DBManager:
             query = """
                 SELECT p.*, c.name as category_name, c.icon as category_icon
                 FROM pinned_panels p
-                JOIN categories c ON p.category_id = c.id
+                LEFT JOIN categories c ON p.category_id = c.id
                 ORDER BY p.last_opened DESC
             """
             panels = self.execute_query(query)
@@ -1410,7 +1410,7 @@ class DBManager:
         query = """
             SELECT p.*, c.name as category_name, c.icon as category_icon
             FROM pinned_panels p
-            JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories c ON p.category_id = c.id
             WHERE p.id = ?
         """
         result = self.execute_query(query, (panel_id,))
@@ -1495,7 +1495,7 @@ class DBManager:
         query = """
             SELECT p.*, c.name as category_name, c.icon as category_icon
             FROM pinned_panels p
-            JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories c ON p.category_id = c.id
             ORDER BY p.last_opened DESC
             LIMIT ?
         """

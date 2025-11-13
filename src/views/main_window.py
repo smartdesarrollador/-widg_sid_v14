@@ -1660,78 +1660,150 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Get category
-        category = self.controller.get_category(str(panel_data['category_id']))
-        logger.debug(f"[MAIN WINDOW] Category retrieved: {category is not None}")
+        # IMPORTANTE: Detectar tipo de panel (category vs global_search)
+        panel_type = panel_data.get('panel_type', 'category')
+        logger.debug(f"[MAIN WINDOW] Panel type: {panel_type}")
 
-        if not category:
-            logger.error(f"[MAIN WINDOW] Category {panel_data['category_id']} not found")
-            QMessageBox.warning(
-                self,
-                "Error",
-                f"Categoria {panel_data['category_id']} no encontrada"
+        if panel_type == 'global_search':
+            # ===== PANEL DE BÚSQUEDA GLOBAL =====
+            logger.info(f"[MAIN WINDOW] Restoring global search panel {panel_id}")
+
+            # Check if panel is already open in pinned_global_search_panels
+            for existing_panel in self.pinned_global_search_panels:
+                if existing_panel.panel_id == panel_id:
+                    logger.info(f"[MAIN WINDOW] Global search panel {panel_id} already open, focusing")
+                    existing_panel.show()
+                    existing_panel.raise_()
+                    existing_panel.activateWindow()
+                    return
+
+            # Create new global search panel
+            from views.global_search_panel import GlobalSearchPanel
+            restored_panel = GlobalSearchPanel(
+                db_manager=self.config_manager.db if self.config_manager else None,
+                config_manager=self.config_manager,
+                list_controller=self.controller.list_controller if self.controller else None,
+                parent=self
             )
-            return
 
-        # Create new floating panel with saved configuration
-        restored_panel = FloatingPanel(
-            config_manager=self.config_manager,
-            list_controller=self.controller.list_controller if self.controller else None,
-            panel_id=panel_id,
-            custom_name=panel_data.get('custom_name'),
-            custom_color=panel_data.get('custom_color'),
-            main_window=self
-        )
+            # Set panel properties
+            restored_panel.panel_id = panel_id
+            restored_panel.panel_name = panel_data.get('custom_name', 'Búsqueda Global')
+            restored_panel.panel_color = panel_data.get('custom_color', '#ff6b00')
+            restored_panel.is_pinned = True
 
-        # Connect signals
-        restored_panel.item_clicked.connect(self.on_item_clicked)
-        restored_panel.window_closed.connect(self.on_floating_panel_closed)
-        restored_panel.pin_state_changed.connect(self.on_panel_pin_changed)
-        restored_panel.customization_requested.connect(self.on_panel_customization_requested)
+            # Connect signals
+            restored_panel.item_clicked.connect(self.on_item_clicked)
+            restored_panel.window_closed.connect(lambda p=restored_panel: self.on_restored_global_search_panel_closed(p))
+            restored_panel.pin_state_changed.connect(self.on_global_search_pin_state_changed)
 
-        # Load category
-        restored_panel.load_category(category)
+            # Restore position and size
+            restored_panel.move(panel_data['x_position'], panel_data['y_position'])
+            restored_panel.resize(panel_data['width'], panel_data['height'])
 
-        # Restore position and size
-        restored_panel.move(panel_data['x_position'], panel_data['y_position'])
-        restored_panel.resize(panel_data['width'], panel_data['height'])
+            # Update UI
+            restored_panel.update_pin_button_style()
+            restored_panel.setWindowTitle(f"🔍 {restored_panel.panel_name}")
 
-        # Apply custom styling
-        restored_panel.apply_custom_styling()
+            # Load all items
+            restored_panel.load_all_items()
 
-        # Set as pinned
-        restored_panel.is_pinned = True
-        restored_panel.pin_button.setText("📍")
-        restored_panel.minimize_button.setVisible(True)
-        restored_panel.config_button.setVisible(True)
+            # Restore minimized state if needed
+            if panel_data.get('is_minimized'):
+                restored_panel.is_minimized = False  # Ensure starts as False
+                restored_panel.toggle_minimize()
 
-        # Restore minimized state if needed
-        if panel_data.get('is_minimized'):
-            restored_panel.toggle_minimize()
+            # Add to pinned global search panels list
+            self.pinned_global_search_panels.append(restored_panel)
+            logger.debug(f"[MAIN WINDOW] Global search panel {panel_id} added to list. Total: {len(self.pinned_global_search_panels)}")
 
-        # Restore filter configuration if available
-        if panel_data.get('filter_config'):
-            filter_config = self.controller.pinned_panels_manager._deserialize_filter_config(
-                panel_data['filter_config']
+            # Update last_opened in database
+            self.controller.pinned_panels_manager.mark_panel_opened(panel_id)
+
+            # Show panel
+            logger.info(f"[MAIN WINDOW] Showing global search panel {panel_id}")
+            restored_panel.show()
+            restored_panel.raise_()
+            restored_panel.activateWindow()
+
+            logger.info(f"[MAIN WINDOW] Global search panel {panel_id} restored successfully")
+
+        else:
+            # ===== PANEL DE CATEGORÍA (FLOATING PANEL) =====
+            logger.info(f"[MAIN WINDOW] Restoring category panel {panel_id}")
+
+            # Get category
+            category = self.controller.get_category(str(panel_data['category_id']))
+            logger.debug(f"[MAIN WINDOW] Category retrieved: {category is not None}")
+
+            if not category:
+                logger.error(f"[MAIN WINDOW] Category {panel_data['category_id']} not found")
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    f"Categoría {panel_data['category_id']} no encontrada"
+                )
+                return
+
+            # Create new floating panel with saved configuration
+            restored_panel = FloatingPanel(
+                config_manager=self.config_manager,
+                list_controller=self.controller.list_controller if self.controller else None,
+                panel_id=panel_id,
+                custom_name=panel_data.get('custom_name'),
+                custom_color=panel_data.get('custom_color'),
+                main_window=self
             )
-            if filter_config:
-                restored_panel.apply_filter_config(filter_config)
-                logger.debug(f"Applied saved filters to panel {panel_id}")
 
-        # Add to pinned panels list
-        self.pinned_panels.append(restored_panel)
-        logger.debug(f"[MAIN WINDOW] Panel {panel_id} added to pinned_panels list. Total panels: {len(self.pinned_panels)}")
+            # Connect signals
+            restored_panel.item_clicked.connect(self.on_item_clicked)
+            restored_panel.window_closed.connect(self.on_floating_panel_closed)
+            restored_panel.pin_state_changed.connect(self.on_panel_pin_changed)
+            restored_panel.customization_requested.connect(self.on_panel_customization_requested)
 
-        # Update last_opened in database
-        self.controller.pinned_panels_manager.mark_panel_opened(panel_id)
+            # Load category
+            restored_panel.load_category(category)
 
-        # Show panel
-        logger.info(f"[MAIN WINDOW] Showing panel {panel_id}")
-        restored_panel.show()
-        restored_panel.raise_()
-        restored_panel.activateWindow()
+            # Restore position and size
+            restored_panel.move(panel_data['x_position'], panel_data['y_position'])
+            restored_panel.resize(panel_data['width'], panel_data['height'])
 
-        logger.info(f"[MAIN WINDOW] Panel {panel_id} restored and shown successfully")
+            # Apply custom styling
+            restored_panel.apply_custom_styling()
+
+            # Set as pinned
+            restored_panel.is_pinned = True
+            restored_panel.pin_button.setText("📍")
+            restored_panel.minimize_button.setVisible(True)
+            restored_panel.config_button.setVisible(True)
+
+            # Restore minimized state if needed
+            if panel_data.get('is_minimized'):
+                restored_panel.toggle_minimize()
+
+            # Restore filter configuration if available
+            if panel_data.get('filter_config'):
+                filter_config = self.controller.pinned_panels_manager._deserialize_filter_config(
+                    panel_data['filter_config']
+                )
+                if filter_config:
+                    restored_panel.apply_filter_config(filter_config)
+                    logger.debug(f"Applied saved filters to panel {panel_id}")
+
+            # Add to pinned panels list
+            self.pinned_panels.append(restored_panel)
+            logger.debug(f"[MAIN WINDOW] Panel {panel_id} added to pinned_panels list. Total panels: {len(self.pinned_panels)}")
+
+            # Update last_opened in database
+            self.controller.pinned_panels_manager.mark_panel_opened(panel_id)
+
+            # Show panel
+            logger.info(f"[MAIN WINDOW] Showing panel {panel_id}")
+            restored_panel.show()
+            restored_panel.raise_()
+            restored_panel.activateWindow()
+
+            logger.info(f"[MAIN WINDOW] Panel {panel_id} restored and shown successfully")
 
     def on_panel_deleted_from_window(self, panel_id: int):
         """Handle panel deletion from management window"""

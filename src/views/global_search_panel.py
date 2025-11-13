@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QEvent, QTimer
 from PyQt6.QtGui import QFont, QCursor
 import sys
 import logging
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -49,6 +50,12 @@ class GlobalSearchPanel(QWidget):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._perform_search)
         self.pending_search_query = ""
+
+        # Timer para auto-guardado (similar a FloatingPanel)
+        self.update_timer = QTimer()
+        self.update_timer.setSingleShot(True)
+        self.update_timer.timeout.connect(self._save_panel_state_to_db)
+        self.update_delay_ms = 1000  # 1 second delay after changes
 
         # Pinned panel properties
         self.is_pinned = False
@@ -605,6 +612,10 @@ class GlobalSearchPanel(QWidget):
         self.pending_search_query = query
         self.search_timer.start(300)  # 300ms debounce
 
+        # Trigger auto-save after 1 second
+        if self.is_pinned:
+            self.update_timer.start(self.update_delay_ms)
+
     def _perform_search(self):
         """Perform the actual search after debounce"""
         query = self.pending_search_query
@@ -672,6 +683,10 @@ class GlobalSearchPanel(QWidget):
         current_query = self.search_bar.search_input.text()
         self.on_search_changed(current_query)
 
+        # Trigger auto-save after 1 second (don't call on_search_changed again to avoid double save)
+        if self.is_pinned:
+            self.update_timer.start(self.update_delay_ms)
+
     def on_filters_cleared(self):
         """Handle cuando se limpian todos los filtros"""
         # Update filter badge
@@ -683,6 +698,10 @@ class GlobalSearchPanel(QWidget):
         # Re-aplicar búsqueda sin filtros
         current_query = self.search_bar.search_input.text()
         self.on_search_changed(current_query)
+
+        # Trigger auto-save after 1 second
+        if self.is_pinned:
+            self.update_timer.start(self.update_delay_ms)
 
     def update_filter_badge(self):
         """Actualizar badge de filtros activos en el header"""
@@ -1353,6 +1372,10 @@ class GlobalSearchPanel(QWidget):
         # Update filter badge
         self.update_filter_badge()
 
+        # Trigger auto-save after 1 second
+        if self.is_pinned:
+            self.update_timer.start(self.update_delay_ms)
+
     def filter_items_by_state(self, items):
         """Filtrar items por estado (activo/archivado/inactivo)
 
@@ -1725,6 +1748,64 @@ class GlobalSearchPanel(QWidget):
             f"ℹ️ Información del Panel",
             info_text
         )
+
+    def _save_panel_state_to_db(self):
+        """AUTO-UPDATE: Save current panel state (position/size/filters/search) to database"""
+        logger.info(f"[AUTO-SAVE] _save_panel_state_to_db() called for global search panel {self.panel_id}")
+
+        # Only save if this is a pinned panel with a valid panel_id
+        if not self.is_pinned or not self.panel_id or not self.panels_manager:
+            logger.warning(f"[AUTO-SAVE] Cannot save - is_pinned={self.is_pinned}, panel_id={self.panel_id}, panels_manager={self.panels_manager is not None}")
+            return
+
+        try:
+            # Log current state
+            logger.info(f"[AUTO-SAVE] Current global search panel state:")
+            logger.info(f"  - current_filters: {self.current_filters}")
+            logger.info(f"  - current_state_filter: {self.current_state_filter}")
+            logger.info(f"  - search_text: '{self.search_bar.search_input.text()}'")
+
+            # Serialize filter configuration
+            filter_config = {
+                'advanced_filters': self.current_filters,
+                'state_filter': self.current_state_filter,
+                'search_query': self.search_bar.search_input.text()
+            }
+
+            # Update panel state in database
+            self.panels_manager.db.execute_update(
+                """UPDATE pinned_panels
+                   SET x_position = ?, y_position = ?, width = ?, height = ?,
+                       is_minimized = ?, filter_config = ?
+                   WHERE id = ?""",
+                (self.x(), self.y(), self.width(), self.height(),
+                 1 if self.is_minimized else 0,
+                 json.dumps(filter_config),
+                 self.panel_id)
+            )
+
+            logger.info(f"[AUTO-SAVE] Global search panel {self.panel_id} state saved successfully")
+            logger.info(f"  - Position: {self.pos()}, Size: {self.size()}")
+            logger.info(f"  - Filters saved: {filter_config}")
+
+        except Exception as e:
+            logger.error(f"[AUTO-SAVE] Error auto-saving global search panel state: {e}", exc_info=True)
+
+    def moveEvent(self, event):
+        """Handle window move event - trigger auto-save"""
+        super().moveEvent(event)
+
+        # Trigger auto-save after 1 second (debounced)
+        if self.is_pinned and not self.is_minimized:
+            self.update_timer.start(self.update_delay_ms)
+
+    def resizeEvent(self, event):
+        """Handle window resize event - trigger auto-save"""
+        super().resizeEvent(event)
+
+        # Trigger auto-save after 1 second (debounced)
+        if self.is_pinned and not self.is_minimized:
+            self.update_timer.start(self.update_delay_ms)
 
     def closeEvent(self, event):
         """Handle window close event"""
