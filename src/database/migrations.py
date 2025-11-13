@@ -283,6 +283,64 @@ def backup_json_files(
         print(f"✅ Backup creado: {backup_path}")
 
 
+def migrate_pinned_panels_for_global_search(db: DBManager) -> None:
+    """
+    Add missing columns to pinned_panels table for global search support
+
+    Adds:
+    - panel_type: 'category' or 'global_search'
+    - search_query: Search text for global_search panels
+    - advanced_filters: JSON serialized advanced filters
+    - state_filter: 'normal', 'archived', 'inactive', 'all'
+    - filter_config: General filter configuration JSON
+    - keyboard_shortcut: Keyboard shortcut like 'Ctrl+Shift+1'
+
+    Args:
+        db: DBManager instance
+    """
+    try:
+        print("\n🔄 Verificando esquema de pinned_panels...")
+
+        # Check which columns exist
+        conn = db.connect()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(pinned_panels)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+
+        # Define columns to add
+        columns_to_add = {
+            'panel_type': "TEXT DEFAULT 'category'",
+            'search_query': "TEXT DEFAULT NULL",
+            'advanced_filters': "TEXT DEFAULT NULL",
+            'state_filter': "TEXT DEFAULT 'normal'",
+            'filter_config': "TEXT DEFAULT NULL",
+            'keyboard_shortcut': "TEXT DEFAULT NULL"
+        }
+
+        added_count = 0
+
+        # Add missing columns
+        for column_name, column_def in columns_to_add.items():
+            if column_name not in existing_columns:
+                alter_query = f"ALTER TABLE pinned_panels ADD COLUMN {column_name} {column_def}"
+                cursor.execute(alter_query)
+                conn.commit()
+                print(f"   ✓ Columna agregada: {column_name}")
+                added_count += 1
+            else:
+                print(f"   ⚠ Columna ya existe: {column_name}")
+
+        if added_count > 0:
+            print(f"✅ Migración completada: {added_count} columnas agregadas")
+        else:
+            print("✅ Esquema ya actualizado, no se requieren cambios")
+
+    except Exception as e:
+        logger.error(f"Error en migración de pinned_panels: {e}")
+        print(f"❌ Error: {e}")
+        raise
+
+
 if __name__ == "__main__":
     """
     Run migration when script is executed directly

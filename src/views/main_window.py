@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         self.sidebar = None
         self.floating_panel = None  # Panel flotante activo (no anclado) - compatibility
         self.pinned_panels = []  # Lista de paneles anclados
+        self.pinned_global_search_panels = []  # Lista de paneles de búsqueda global anclados
         self.pinned_panels_window = None  # Ventana de gestión de paneles anclados
         self.global_search_panel = None  # Ventana flotante para búsqueda global
         self.favorites_panel = None  # Ventana flotante para favoritos
@@ -104,6 +105,7 @@ class MainWindow(QMainWindow):
 
         # AUTO-RESTORE: Restore pinned panels from database on startup
         self.restore_pinned_panels_on_startup()
+        self.restore_pinned_global_search_panels()
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -413,7 +415,8 @@ class MainWindow(QMainWindow):
                 db_manager = self.config_manager.db if self.config_manager else None
                 self.global_search_panel = GlobalSearchPanel(
                     db_manager=db_manager,
-                    config_manager=self.config_manager
+                    config_manager=self.config_manager,
+                    list_controller=self.controller.list_controller
                 )
                 self.global_search_panel.item_clicked.connect(self.on_item_clicked)
                 self.global_search_panel.window_closed.connect(self.on_global_search_panel_closed)
@@ -1519,6 +1522,96 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error during panel restoration on startup: {e}", exc_info=True)
 
+    def restore_pinned_global_search_panels(self):
+        """Restaurar paneles de búsqueda global anclados desde la BD"""
+        if not self.controller:
+            logger.warning("No controller available - skipping global search panels restoration")
+            return
+
+        try:
+            global_panels_data = self.controller.pinned_panels_manager.get_global_search_panels(active_only=True)
+
+            if not global_panels_data:
+                logger.info("No active global search panels to restore")
+                return
+
+            logger.info(f"Restoring {len(global_panels_data)} global search panels...")
+
+            for panel_data in global_panels_data:
+                try:
+                    # Extraer configuración del panel
+                    config = self.controller.pinned_panels_manager.restore_global_search_panel(panel_data)
+
+                    # Crear nuevo panel de búsqueda global
+                    from views.global_search_panel import GlobalSearchPanel
+                    restored_panel = GlobalSearchPanel(
+                        db_manager=self.controller.db_manager if self.controller else None,
+                        config_manager=self.config_manager,
+                        list_controller=self.controller.list_controller if self.controller else None,
+                        parent=None  # Ventana independiente
+                    )
+
+                    # Restaurar propiedades
+                    restored_panel.panel_id = config['panel_id']
+                    restored_panel.panel_name = config['custom_name']
+                    restored_panel.panel_color = config['custom_color']
+                    restored_panel.is_pinned = True
+
+                    # Restaurar posición y tamaño
+                    restored_panel.move(config['position'][0], config['position'][1])
+                    restored_panel.resize(config['size'][0], config['size'][1])
+
+                    # Restaurar título
+                    restored_panel.setWindowTitle(f"🔍 {config['custom_name']}")
+
+                    # Restaurar filtros si existen
+                    if config['search_query']:
+                        restored_panel.search_bar.search_input.setText(config['search_query'])
+                        restored_panel.pending_search_query = config['search_query']
+
+                    if config['advanced_filters']:
+                        restored_panel.current_filters = config['advanced_filters']
+
+                    if config['state_filter']:
+                        restored_panel.current_state_filter = config['state_filter']
+                        # Establecer combo box de estado
+                        index = restored_panel.state_filter_combo.findData(config['state_filter'])
+                        if index >= 0:
+                            restored_panel.state_filter_combo.setCurrentIndex(index)
+
+                    # Actualizar UI
+                    restored_panel.update_pin_button_style()
+                    restored_panel.update_filter_badge()
+
+                    # Realizar búsqueda inicial si hay query
+                    if config['search_query']:
+                        restored_panel._perform_search()
+
+                    # Restaurar estado minimizado
+                    if config['is_minimized']:
+                        restored_panel.is_minimized = False  # Asegurar que empieza en False
+                        restored_panel.toggle_minimize()
+
+                    # Agregar a lista
+                    self.pinned_global_search_panels.append(restored_panel)
+
+                    # Actualizar last_opened en BD
+                    self.controller.pinned_panels_manager.mark_panel_opened(config['panel_id'])
+
+                    # Mostrar panel
+                    restored_panel.show()
+
+                    logger.info(f"Global search panel {config['panel_id']} ({config['custom_name']}) restored successfully")
+
+                except Exception as e:
+                    logger.error(f"Failed to restore global search panel {panel_data.get('id', 'unknown')}: {e}", exc_info=True)
+                    continue
+
+            logger.info(f"Global search panel restoration complete: {len(self.pinned_global_search_panels)}/{len(global_panels_data)} panels restored")
+
+        except Exception as e:
+            logger.error(f"Failed to restore pinned global search panels: {e}", exc_info=True)
+
     def on_restore_panel_requested(self, panel_id: int):
         """Handle request to restore/open a saved panel"""
         logger.info(f"[MAIN WINDOW] Restore panel requested: {panel_id}")
@@ -1695,6 +1788,26 @@ class MainWindow(QMainWindow):
                     break
         except Exception as e:
             logger.error(f"Error handling panel update: {e}")
+
+    def on_global_search_panel_pinned(self, panel):
+        """Callback cuando se ancla un panel de búsqueda global"""
+        if panel not in self.pinned_global_search_panels:
+            self.pinned_global_search_panels.append(panel)
+            logger.info(f"Added global search panel {panel.panel_id} to pinned list")
+
+            # Actualizar gestor de paneles si está abierto
+            if hasattr(self, 'pinned_panels_window') and self.pinned_panels_window and self.pinned_panels_window.isVisible():
+                self.pinned_panels_window.refresh_panels_list()
+
+    def on_global_search_panel_unpinned(self, panel):
+        """Callback cuando se desancla un panel de búsqueda global"""
+        if panel in self.pinned_global_search_panels:
+            self.pinned_global_search_panels.remove(panel)
+            logger.info(f"Removed global search panel {panel.panel_id} from pinned list")
+
+            # Actualizar gestor de paneles si está abierto
+            if hasattr(self, 'pinned_panels_window') and self.pinned_panels_window and self.pinned_panels_window.isVisible():
+                self.pinned_panels_window.refresh_panels_list()
 
     def closeEvent(self, event):
         """Override close event to minimize to tray instead of closing"""

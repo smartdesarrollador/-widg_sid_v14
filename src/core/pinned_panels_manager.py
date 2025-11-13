@@ -325,6 +325,21 @@ class PinnedPanelsManager:
             logger.error(f"Failed to update panel customization: {e}")
             raise
 
+    def update_panel_minimize_state(self, panel_id: int, is_minimized: bool):
+        """
+        Actualizar estado minimizado de un panel
+
+        Args:
+            panel_id: Panel ID to update
+            is_minimized: New minimized state
+        """
+        try:
+            self.db.update_pinned_panel(panel_id, is_minimized=is_minimized)
+            logger.info(f"Updated panel {panel_id} minimize state to: {is_minimized}")
+        except Exception as e:
+            logger.error(f"Failed to update minimize state: {e}")
+            raise
+
     def get_panel_by_category(self, category_id: int) -> Optional[Dict]:
         """
         Check if an active panel for this category already exists
@@ -396,3 +411,142 @@ class PinnedPanelsManager:
         except Exception as e:
             logger.error(f"Failed to check if panels exist: {e}")
             return False
+
+    # ========== GLOBAL SEARCH PANEL METHODS ==========
+
+    def save_global_search_panel(self, panel_widget,
+                                 custom_name: str = None, custom_color: str = None,
+                                 keyboard_shortcut: str = None) -> int:
+        """
+        Save current state of a GlobalSearchPanel to database
+
+        Args:
+            panel_widget: GlobalSearchPanel widget instance
+            custom_name: Custom name for the panel (optional, defaults to "Búsqueda Global")
+            custom_color: Custom color for panel header (optional, hex format)
+            keyboard_shortcut: Keyboard shortcut (optional, auto-assigned if None)
+
+        Returns:
+            int: Panel ID in database
+        """
+        try:
+            # Auto-assign keyboard shortcut if not provided
+            if keyboard_shortcut is None:
+                keyboard_shortcut = self._get_next_available_shortcut()
+                if keyboard_shortcut:
+                    logger.info(f"Auto-assigned keyboard shortcut: {keyboard_shortcut}")
+
+            # Extract search query
+            search_query = ""
+            if hasattr(panel_widget, 'search_bar') and panel_widget.search_bar:
+                if hasattr(panel_widget.search_bar, 'search_input'):
+                    search_query = panel_widget.search_bar.search_input.text()
+
+            # Serialize advanced filters
+            advanced_filters = None
+            if hasattr(panel_widget, 'current_filters') and panel_widget.current_filters:
+                advanced_filters = json.dumps(panel_widget.current_filters)
+
+            # Get state filter
+            state_filter = getattr(panel_widget, 'current_state_filter', 'normal')
+
+            # Use custom name or default
+            if not custom_name:
+                custom_name = getattr(panel_widget, 'panel_name', 'Búsqueda Global')
+
+            # Use custom color or default
+            if not custom_color:
+                custom_color = getattr(panel_widget, 'panel_color', '#ff6b00')
+
+            panel_id = self.db.save_pinned_panel(
+                category_id=None,  # No category for global search
+                x_pos=panel_widget.x(),
+                y_pos=panel_widget.y(),
+                width=panel_widget.width(),
+                height=panel_widget.height(),
+                is_minimized=getattr(panel_widget, 'is_minimized', False),
+                custom_name=custom_name,
+                custom_color=custom_color,
+                keyboard_shortcut=keyboard_shortcut,
+                panel_type='global_search',
+                search_query=search_query,
+                advanced_filters=advanced_filters,
+                state_filter=state_filter
+            )
+            logger.info(f"Global search panel saved (ID: {panel_id}, Query: '{search_query}', State: {state_filter})")
+            return panel_id
+        except Exception as e:
+            logger.error(f"Failed to save global search panel: {e}", exc_info=True)
+            raise
+
+    def get_global_search_panels(self, active_only: bool = True) -> List[Dict]:
+        """
+        Get all saved global search panels
+
+        Args:
+            active_only: If True, only return active panels (default)
+
+        Returns:
+            List[Dict]: List of global search panel dictionaries
+        """
+        try:
+            all_panels = self.db.get_pinned_panels(active_only=active_only)
+            # Filter for global_search type
+            global_search_panels = [
+                panel for panel in all_panels
+                if panel.get('panel_type') == 'global_search'
+            ]
+            logger.debug(f"Retrieved {len(global_search_panels)} global search panels (active_only={active_only})")
+            return global_search_panels
+        except Exception as e:
+            logger.error(f"Failed to retrieve global search panels: {e}")
+            return []
+
+    def restore_global_search_panel(self, panel_data: Dict) -> Dict:
+        """
+        Extract configuration from panel data for restoring a global search panel
+
+        Args:
+            panel_data: Panel dictionary from database
+
+        Returns:
+            Dict: Configuration dictionary for reconstructing the panel with keys:
+                - panel_id: Panel ID
+                - custom_name: Panel name
+                - custom_color: Panel header color
+                - keyboard_shortcut: Keyboard shortcut
+                - search_query: Search text to restore
+                - advanced_filters: Advanced filters dict (deserialized from JSON)
+                - state_filter: State filter value
+                - position: (x, y) tuple
+                - size: (width, height) tuple
+                - is_minimized: Minimized state
+        """
+        try:
+            # Deserialize advanced filters if present
+            advanced_filters = {}
+            if panel_data.get('advanced_filters'):
+                try:
+                    advanced_filters = json.loads(panel_data['advanced_filters'])
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse advanced filters: {e}")
+
+            config = {
+                'panel_id': panel_data['id'],
+                'custom_name': panel_data.get('custom_name', 'Búsqueda Global'),
+                'custom_color': panel_data.get('custom_color', '#ff6b00'),
+                'keyboard_shortcut': panel_data.get('keyboard_shortcut'),
+                'search_query': panel_data.get('search_query', ''),
+                'advanced_filters': advanced_filters,
+                'state_filter': panel_data.get('state_filter', 'normal'),
+                'position': (panel_data['x_position'], panel_data['y_position']),
+                'size': (panel_data['width'], panel_data['height']),
+                'is_minimized': panel_data.get('is_minimized', False)
+            }
+
+            logger.debug(f"Restored config for global search panel {config['panel_id']}")
+            return config
+
+        except Exception as e:
+            logger.error(f"Failed to restore global search panel config: {e}", exc_info=True)
+            raise

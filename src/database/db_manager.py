@@ -1323,15 +1323,17 @@ class DBManager:
 
     # ========== PINNED PANELS ==========
 
-    def save_pinned_panel(self, category_id: int, x_pos: int, y_pos: int,
-                         width: int, height: int, is_minimized: bool = False,
+    def save_pinned_panel(self, category_id: int = None, x_pos: int = 0, y_pos: int = 0,
+                         width: int = 350, height: int = 500, is_minimized: bool = False,
                          custom_name: str = None, custom_color: str = None,
-                         filter_config: str = None, keyboard_shortcut: str = None) -> int:
+                         filter_config: str = None, keyboard_shortcut: str = None,
+                         panel_type: str = 'category', search_query: str = None,
+                         advanced_filters: str = None, state_filter: str = 'normal') -> int:
         """
         Save a pinned panel configuration to database
 
         Args:
-            category_id: Category ID for this panel
+            category_id: Category ID for category panels (None for global_search)
             x_pos: X position on screen
             y_pos: Y position on screen
             width: Panel width
@@ -1341,6 +1343,10 @@ class DBManager:
             custom_color: Custom header color (optional, hex format)
             filter_config: Filter configuration as JSON string (optional)
             keyboard_shortcut: Keyboard shortcut string like 'Ctrl+Shift+1' (optional)
+            panel_type: Panel type ('category' or 'global_search')
+            search_query: Search query text for global_search panels (optional)
+            advanced_filters: Advanced filters as JSON string (optional)
+            state_filter: State filter ('normal', 'archived', 'inactive', 'all')
 
         Returns:
             int: New panel ID
@@ -1348,14 +1354,17 @@ class DBManager:
         query = """
             INSERT INTO pinned_panels
             (category_id, x_position, y_position, width, height, is_minimized,
-             custom_name, custom_color, filter_config, keyboard_shortcut, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+             custom_name, custom_color, filter_config, keyboard_shortcut,
+             panel_type, search_query, advanced_filters, state_filter, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         """
         panel_id = self.execute_update(
             query,
-            (category_id, x_pos, y_pos, width, height, is_minimized, custom_name, custom_color, filter_config, keyboard_shortcut)
+            (category_id, x_pos, y_pos, width, height, is_minimized, custom_name,
+             custom_color, filter_config, keyboard_shortcut, panel_type, search_query,
+             advanced_filters, state_filter)
         )
-        logger.info(f"Pinned panel saved: Category {category_id} (ID: {panel_id}, Shortcut: {keyboard_shortcut})")
+        logger.info(f"Pinned panel saved: Type={panel_type}, Category={category_id}, Query='{search_query}' (ID: {panel_id})")
         return panel_id
 
     def get_pinned_panels(self, active_only: bool = True) -> List[Dict]:
@@ -1415,14 +1424,16 @@ class DBManager:
             panel_id: Panel ID to update
             **kwargs: Fields to update (x_position, y_position, width, height,
                      is_minimized, custom_name, custom_color, filter_config,
-                     keyboard_shortcut, is_active)
+                     keyboard_shortcut, panel_type, search_query, advanced_filters,
+                     state_filter, is_active)
 
         Returns:
             bool: True if update successful
         """
         allowed_fields = [
             'x_position', 'y_position', 'width', 'height', 'is_minimized',
-            'custom_name', 'custom_color', 'filter_config', 'keyboard_shortcut', 'is_active'
+            'custom_name', 'custom_color', 'filter_config', 'keyboard_shortcut',
+            'panel_type', 'search_query', 'advanced_filters', 'state_filter', 'is_active'
         ]
         updates = []
         params = []
