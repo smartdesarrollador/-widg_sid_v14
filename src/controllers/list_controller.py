@@ -109,6 +109,53 @@ class ListController(QObject):
 
     # ========== OPERACIONES CRUD ==========
 
+    def create_list_from_items(self, list_name: str, category_id: int, item_ids: List[int]) -> tuple[bool, str, List[int]]:
+        """
+        Crea una nueva lista a partir de items existentes (por sus IDs)
+
+        Args:
+            list_name: Nombre de la lista
+            category_id: ID de la categoría destino
+            item_ids: Lista de IDs de items existentes
+
+        Returns:
+            Tuple (success, message, new_item_ids)
+        """
+        try:
+            # Obtener datos de los items existentes
+            items_data = []
+            for item_id in item_ids:
+                # Obtener item de la BD
+                item = self.db.get_item(item_id)
+                if item:
+                    # Crear dict con los datos necesarios para la lista
+                    item_data = {
+                        'label': item.get('label', ''),
+                        'content': item.get('content', ''),
+                        'type': item.get('type', 'text'),
+                        'icon': item.get('icon'),
+                        'description': item.get('description'),
+                        'is_sensitive': item.get('is_sensitive', False)
+                    }
+                    items_data.append(item_data)
+                else:
+                    logger.warning(f"Item {item_id} not found - skipping")
+
+            if not items_data:
+                error_msg = "No se encontraron items válidos para crear la lista"
+                logger.error(error_msg)
+                self.error_occurred.emit(error_msg)
+                return False, error_msg, []
+
+            # Usar create_list con los datos obtenidos
+            return self.create_list(category_id, list_name, items_data)
+
+        except Exception as e:
+            error_msg = f"Error al crear lista desde items: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            self.error_occurred.emit(error_msg)
+            return False, error_msg, []
+
     def create_list(self, category_id: int, list_name: str,
                    items_data: List[Dict[str, Any]]) -> tuple[bool, str, List[int]]:
         """
